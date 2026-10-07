@@ -35,6 +35,7 @@ builder.Services.AddHealthChecks()
     .AddDbContextCheck<TraceabilityDbContext>("database");
 
 builder.Services.AddScoped<ITraceService, TraceService>();
+builder.Services.AddScoped<IDashboardService, DashboardService>();
 
 
 var app = builder.Build();
