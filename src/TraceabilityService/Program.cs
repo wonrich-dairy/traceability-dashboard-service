@@ -1,7 +1,9 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.EntityFrameworkCore;
 using TraceabilityService.Api.Infrastructure;
 using TraceabilityService.Api.Infrastructure.Observability;
+using TraceabilityService.Api.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -14,6 +16,11 @@ var connectionString = builder.Configuration.GetConnectionString("Default")
     ?? throw new InvalidOperationException(
         "Connection string 'Default' not found. Set it with: " +
         "dotnet user-secrets set \"ConnectionStrings:Default\" \"<connection string>\"");
+
+// Pinned rather than AutoDetect so startup doesn't need a reachable server and
+// every environment gets the same SQL. Keep in step with the deployed MySQL.
+builder.Services.AddDbContext<TraceabilityDbContext>(options =>
+    options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 46))));
 
 // Authentication and authorization (shared Auth Service tokens, 401 for unauthenticated except /health)
 builder.Services.AddTraceabilityAuthentication(builder.Configuration);
@@ -65,5 +72,3 @@ app.MapTraceabilityMetrics();
 app.MapControllers();
 
 app.Run();
-
-
