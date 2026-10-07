@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using TraceabilityService.Api.Infrastructure;
 using TraceabilityService.Api.Infrastructure.Observability;
 using TraceabilityService.Api.Infrastructure.Persistence;
+using TraceabilityService.Application;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -32,6 +33,9 @@ builder.Services.AddTraceabilityObservability(builder.Configuration);
 
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<TraceabilityDbContext>("database");
+
+builder.Services.AddScoped<ITraceService, TraceService>();
+
 
 var app = builder.Build();
 
