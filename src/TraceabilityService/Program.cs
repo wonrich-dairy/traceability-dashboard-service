@@ -30,7 +30,8 @@ builder.Services.AddTraceabilityCors(builder.Configuration);
 // Observability (metrics, structured logging, correlation ID)
 builder.Services.AddTraceabilityObservability(builder.Configuration);
 
-builder.Services.AddHealthChecks();
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<TraceabilityDbContext>("database");
 
 var app = builder.Build();
 
