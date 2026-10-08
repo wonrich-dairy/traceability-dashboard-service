@@ -16,7 +16,7 @@ This repository starts with the DevOps foundation: the Dockerfile, compose file,
 | Database | Azure Database for MySQL Flexible Server (`wonrichmysql`), EF Core 9 (Pomelo) |
 | Messaging | Apache Kafka (shared broker from [`wonrich-infra`](https://github.com/wonrich-dairy/wonrich-infra)) |
 | Container | Docker, multi-stage build |
-| Hosting | Azure App Service (Linux, container), image in `wonrichacr` |
+| Hosting | Azure App Service (Linux, container), image in `wonrichtrcacr` |
 
 ---
 

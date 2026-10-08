@@ -24,7 +24,7 @@ Traceability Service is built, tested, scanned and deployed by GitHub Actions (S
 | Database | `traceability` | `traceability_prod` |
 | Migrations | applied by the app on startup | applied by the pipeline from the migration script, before the deploy |
 
-Image: `wonrichacr.azurecr.io/traceability`. App names and URLs for every service are in `wonrich-infra/docs/environments.md`.
+Image: `wonrichtrcacr.azurecr.io/traceability`. App names and URLs for every service are in `wonrich-infra/docs/environments.md`.
 
 ---
 
@@ -107,7 +107,7 @@ No credentials are in workflow files. Everything is a GitHub **environment** sec
 
 | Name | Type | `staging` | `production` |
 |---|---|---|---|
-| `ACR_LOGIN_SERVER` | Secret | `wonrichacr.azurecr.io` | same |
+| `ACR_LOGIN_SERVER` | Secret | `wonrichtrcacr.azurecr.io` | same |
 | `ACR_USERNAME` | Secret | ACR token scoped to the `traceability` repository | same |
 | `ACR_PASSWORD` | Secret | that token's password | same |
 | `APP_HOST` | Variable | staging App Service host, without `https://` | production host |
