@@ -1,0 +1,328 @@
+name: Traceability CI/CD
+
+# Build, test, scan and deploy Traceability Service (SCRUM-123). Same shape as Quality Lab
+# (SCRUM-109, SCRUM-42, SCRUM-112), plus a production stage. See docs/ci-cd-pipeline.md.
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_VERSION: "10.0.x"
+  API_PROJECT: src/TraceabilityService/TraceabilityService.csproj
+  UNIT_TEST_PROJECT: tests/TraceabilityService.UnitTests/TraceabilityService.UnitTests.csproj
+  INTEGRATION_TEST_PROJECT: tests/TraceabilityService.IntegrationTests/TraceabilityService.IntegrationTests.csproj
+  COVERAGE_THRESHOLD: "60"
+  IMAGE_NAME: traceability
+
+jobs:
+  # ── NuGet dependency audit (SCRUM-112) ──────────────────────────────────────
+  # Separate job so it shows as its own check on the PR and runs in parallel with the build.
+  dependency-audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: |
+          dotnet restore ${{ env.API_PROJECT }}
+          dotnet restore ${{ env.UNIT_TEST_PROJECT }}
+          dotnet restore ${{ env.INTEGRATION_TEST_PROJECT }}
+
+      # Direct and transitive packages. High / Critical fail; Moderate / Low are reported only.
+      - name: NuGet vulnerability audit
+        run: >
+          bash scripts/nuget-audit.sh
+          ${{ env.API_PROJECT }}
+          ${{ env.UNIT_TEST_PROJECT }}
+          ${{ env.INTEGRATION_TEST_PROJECT }}
+
+  # ── Build, test, image scan, migration script ───────────────────────────────
+  build:
+    name: Build and test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write   # coverage summary comment
+      checks: write          # test results check (.trx)
+      security-events: write # image scan results in the Security tab
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: |
+          dotnet restore ${{ env.API_PROJECT }}
+          dotnet restore ${{ env.UNIT_TEST_PROJECT }}
+          dotnet restore ${{ env.INTEGRATION_TEST_PROJECT }}
+
+      - name: Build
+        run: dotnet build ${{ env.API_PROJECT }} --no-restore -c Release
+
+      # ── Stage: unit tests ───────────────────────────────────────────────────
+      - name: Unit tests
+        run: >
+          dotnet test ${{ env.UNIT_TEST_PROJECT }} --no-restore -c Release
+          --settings coverlet.runsettings
+          --collect:"XPlat Code Coverage"
+          --logger "trx;LogFileName=unit-tests.trx"
+          --results-directory test-results/unit
+
+      # ── Stage: integration tests (throwaway MySQL via Testcontainers) ───────
+      - name: Integration tests
+        run: >
+          dotnet test ${{ env.INTEGRATION_TEST_PROJECT }} --no-restore -c Release
+          --settings coverlet.runsettings
+          --collect:"XPlat Code Coverage"
+          --logger "trx;LogFileName=integration-tests.trx"
+          --results-directory test-results/integration
+
+      - name: Publish test results (.trx)
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: Test results
+          path: test-results/**/*.trx
+          reporter: dotnet-trx
+          fail-on-error: false
+
+      # ── Coverage: both runs merged into one report ──────────────────────────
+      - name: Coverage report
+        if: always()
+        uses: danielpalme/ReportGenerator-GitHub-Action@5
+        with:
+          reports: test-results/**/coverage.cobertura.xml
+          targetdir: coverage-report
+          reporttypes: HtmlInline;Cobertura;JsonSummary;MarkdownSummaryGithub
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage-report
+
+      - name: Coverage summary
+        if: always()
+        run: cat coverage-report/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Comment coverage on PR
+        if: always() && github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: coverage
+          path: coverage-report/SummaryGithub.md
+
+      - name: Enforce coverage threshold (${{ env.COVERAGE_THRESHOLD }}% lines)
+        run: |
+          COVERAGE=$(jq -r '.summary.linecoverage' coverage-report/Summary.json)
+          echo "Line coverage: ${COVERAGE}% (minimum ${{ env.COVERAGE_THRESHOLD }}%)"
+          awk -v c="$COVERAGE" -v t="${{ env.COVERAGE_THRESHOLD }}" \
+            'BEGIN { if (c+0 < t+0) { print "Coverage below threshold"; exit 1 } }'
+
+      - name: Generate idempotent migration script
+        env:
+          # Placeholder so EF can build the DbContext. Script generation never connects.
+          ConnectionStrings__TraceabilityDb: "Server=localhost;Database=traceability;User=ci;Password=ci;"
+        run: |
+          dotnet tool restore
+          mkdir -p artifacts
+          dotnet ef migrations script --idempotent \
+            --project ${{ env.API_PROJECT }} \
+            --context TraceabilityDbContext \
+            --output artifacts/migrations.sql
+          # EF writes a UTF-8 byte order mark, which the mysql client rejects as SQL.
+          sed -i '1s/^\xEF\xBB\xBF//' artifacts/migrations.sql
+
+      - name: Upload migration script
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-script
+          path: artifacts/migrations.sql
+
+      - name: Docker build (validation)
+        run: docker build -t ${{ env.IMAGE_NAME }}:ci .
+
+      # ── Container image scan (SCRUM-112) ────────────────────────────────────
+      # The first pass reports every severity to the Security tab and never fails; the second is
+      # the gate, High / Critical with a fix available. Triaged exceptions go in .trivyignore.
+      - name: Image scan report (all severities)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:ci
+          format: sarif
+          output: trivy-results.sarif
+          exit-code: "0"
+
+      - name: Upload image scan to Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-image
+
+      - name: Image scan gate (High / Critical)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:ci
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          trivyignores: .trivyignore
+          exit-code: "1"
+
+  # ── Deploy to staging (develop only) ────────────────────────────────────────
+  deploy-staging:
+    name: Deploy to staging
+    needs: [dependency-audit, build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: https://${{ vars.APP_HOST }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Token scoped to the traceability repository in the registry (no Azure AD login needed).
+      - name: ACR login
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Keep current image as "previous" (rollback target)
+        run: |
+          REPO=${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}
+          if docker pull "$REPO:latest"; then
+            docker tag "$REPO:latest" "$REPO:previous"
+            docker push "$REPO:previous"
+          else
+            echo "No current image yet (first deployment)"
+          fi
+
+      - name: Build image
+        run: |
+          REPO=${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}
+          docker build \
+            --build-arg GIT_SHA=${{ github.sha }} \
+            -t "$REPO:${{ github.sha }}" \
+            -t "$REPO:latest" .
+
+      # Pushing :latest triggers the staging ACR webhook; App Service pulls the new image and restarts.
+      - name: Push image
+        run: |
+          REPO=${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}
+          docker push "$REPO:${{ github.sha }}"
+          docker push "$REPO:latest"
+
+      - name: Verify /health (database check + deployed version)
+        run: bash scripts/verify-health.sh "${{ vars.APP_HOST }}" "${{ github.sha }}"
+
+  # ── Performance test after each staging deploy ──────────────────────────────
+  # Separate job: a regression fails the run but never blocks or undoes the deployment.
+  performance:
+    name: Performance
+    needs: deploy-staging
+    uses: ./.github/workflows/performance.yml
+    secrets: inherit
+
+  # ── Deploy to production (main only, after approval) ────────────────────────
+  # `environment: production` pauses the job until a required reviewer approves it.
+  # The image is promoted, never rebuilt: production runs the exact image staging tested.
+  deploy-production:
+    name: Deploy to production
+    needs: [dependency-audit, build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://${{ vars.APP_HOST }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2   # the merge commit and its parents
+
+      - name: ACR login
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      # Staging tagged its image with the develop commit. A fast-forward of main has the same
+      # commit; a merge commit has develop as its second parent and must contain exactly the same
+      # code, or the image staging tested is not what main holds.
+      - name: Find the image staging tested
+        id: source
+        run: |
+          REPO=${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}
+          if docker manifest inspect "$REPO:$GITHUB_SHA" >/dev/null 2>&1; then
+            SHA="$GITHUB_SHA"
+          elif git rev-parse -q --verify HEAD^2 >/dev/null; then
+            git diff --quiet HEAD^2 HEAD || { echo "::error::main differs from the develop commit it merged; merge develop into main without extra changes"; exit 1; }
+            SHA=$(git rev-parse HEAD^2)
+            docker manifest inspect "$REPO:$SHA" >/dev/null 2>&1 \
+              || { echo "::error::No staging image for $SHA. Let the develop pipeline deploy it to staging first."; exit 1; }
+          else
+            echo "::error::No staging image for $GITHUB_SHA. Let the develop pipeline deploy it to staging first."; exit 1
+          fi
+          echo "Promoting $REPO:$SHA"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      # Migrations first: they must stay backward compatible, so the running version keeps working
+      # on the new schema, and a rollback of the app never needs the database rolled back.
+      - name: Download migration script
+        uses: actions/download-artifact@v4
+        with:
+          name: migration-script
+          path: artifacts
+
+      - name: Apply migrations to the production database
+        env:
+          MYSQL_PWD: ${{ secrets.DB_PASSWORD }}
+        run: |
+          mysql --host="${{ vars.DB_HOST }}" --user="${{ vars.DB_USER }}" \
+            --ssl-mode=REQUIRED "${{ vars.DB_NAME }}" < artifacts/migrations.sql
+          echo "Applied migrations:"
+          mysql --host="${{ vars.DB_HOST }}" --user="${{ vars.DB_USER }}" \
+            --ssl-mode=REQUIRED "${{ vars.DB_NAME }}" \
+            -e 'SELECT MigrationId FROM __EFMigrationsHistory ORDER BY MigrationId'
+
+      - name: Keep current production image as "production-previous" (rollback target)
+        run: |
+          REPO=${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}
+          if docker pull "$REPO:production"; then
+            docker tag "$REPO:production" "$REPO:production-previous"
+            docker push "$REPO:production-previous"
+          else
+            echo "No production image yet (first deployment)"
+          fi
+
+      # Pushing :production triggers the production ACR webhook; App Service pulls and restarts.
+      - name: Promote the tested image to "production"
+        run: |
+          REPO=${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}
+          docker pull "$REPO:${{ steps.source.outputs.sha }}"
+          docker tag "$REPO:${{ steps.source.outputs.sha }}" "$REPO:production"
+          docker push "$REPO:production"
+
+      - name: Verify /health (database check + deployed version)
+        run: bash scripts/verify-health.sh "${{ vars.APP_HOST }}" "${{ steps.source.outputs.sha }}"

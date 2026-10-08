@@ -1,0 +1,6 @@
+# Keep LF line endings on files that Linux containers and CI runners read or execute.
+* text=auto
+*.sh          text eol=lf
+*.yml         text eol=lf
+*.yaml        text eol=lf
+Dockerfile    text eol=lf
