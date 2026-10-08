@@ -66,4 +66,7 @@ app.MapControllers();
 
 app.Run();
 
+// Exposes Program to WebApplicationFactory<Program> in TraceabilityService.Tests
+public partial class Program;
+
 
