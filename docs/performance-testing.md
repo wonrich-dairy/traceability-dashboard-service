@@ -21,9 +21,8 @@ Each simulated user repeats this loop, with a pause of 1.0 to 1.5 s before each 
 |---|---|
 | `read: service info` | `GET /` |
 | `read: version` | `GET /version` |
-| `read: health` | `GET /health` |
 
-These are the endpoints the service has from the start. **Add a `read:` sampler to `perf/traceability.jmx` for each API endpoint the service gains** (for example the dashboard summary and the batch trace), so the 2-second target covers the real queries. Only samplers labelled `read:` or `write:` are measured.
+These are the endpoints the service has from the start. `/health` is not load tested: each call opens a Kafka connection, so it is meant for probes, and on a free-tier app it times out under load. **Add a `read:` sampler to `perf/traceability.jmx` for each API endpoint the service gains** (for example the dashboard summary and the batch trace), so the 2-second target covers the real queries. Only samplers labelled `read:` or `write:` are measured.
 
 No sign-in is needed for these endpoints. Every request carries an `X-Correlation-ID` of `jmeter-<uuid>`, so load-test traffic is easy to find or exclude in the logs.
 
