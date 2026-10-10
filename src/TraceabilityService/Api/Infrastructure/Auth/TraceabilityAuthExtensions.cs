@@ -68,29 +68,5 @@ namespace TraceabilityService.Api.Infrastructure
                     policy.RequireRole(WonrichRoles.QualityAnalyst, WonrichRoles.SystemAdministrator));
             return services;
         }
-
-        public static IServiceCollection AddTraceabilityCors(this IServiceCollection services, IConfiguration configuration)
-        {
-            var origins = configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
-                          ?? ["http://localhost:5173", "http://127.0.0.1:5173"];
-
-            services.AddCors(options =>
-            {
-                options.AddPolicy("TraceabilityCors", policy =>
-                {
-                    policy.WithOrigins(origins)
-                          .AllowAnyHeader()
-                          .AllowAnyMethod()
-                          .AllowCredentials();
-                });
-            });
-
-            return services;
-        }
-
-        public static IApplicationBuilder UseTraceabilityCors(this IApplicationBuilder app)
-        {
-            return app.UseCors("TraceabilityCors");
-        }
     }
 }
