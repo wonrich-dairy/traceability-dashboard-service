@@ -12,6 +12,10 @@ namespace TraceabilityService.IntegrationTests;
 /// </summary>
 public class TraceabilityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
+    public const string SigningKey = "traceability-tests-signing-key-not-used-anywhere-else";
+    public const string Issuer = "wonrich-auth";
+    public const string Audience = "wonrich-services";
+
     private readonly MySqlContainer _mysql = new MySqlBuilder("mysql:8.0")
         .WithDatabase("traceability")
         .WithUsername("trc_app")
@@ -30,6 +34,9 @@ public class TraceabilityApiFactory : WebApplicationFactory<Program>, IAsyncLife
                 ["ConnectionStrings:TraceabilityDb"] = _mysql.GetConnectionString(),
                 // No broker in CI: the Kafka check reports Degraded, which is expected.
                 ["Kafka:BootstrapServers"] = "localhost:1",
+                ["Auth:SigningKey"] = SigningKey,
+                ["Auth:Issuer"] = Issuer,
+                ["Auth:Audience"] = Audience,
             }));
 
         return base.CreateHost(builder);
