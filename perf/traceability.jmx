@@ -117,28 +117,7 @@
           </ResponseAssertion>
           <hashTree />
         </hashTree>
-        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="read: health" enabled="true">
-          <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
-            <collectionProp name="Arguments.arguments" />
-          </elementProp>
-          <stringProp name="HTTPSampler.path">/health</stringProp>
-          <stringProp name="HTTPSampler.method">GET</stringProp>
-          <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
-          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
-        </HTTPSamplerProxy>
-        <hashTree>
-          <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="2xx" enabled="true">
-            <collectionProp name="Asserion.test_strings">
-              <stringProp name="0">2\d\d</stringProp>
-            </collectionProp>
-            <stringProp name="Assertion.custom_message">Expected a 2xx response</stringProp>
-            <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
-            <boolProp name="Assertion.assume_success">false</boolProp>
-            <intProp name="Assertion.test_type">1</intProp>
-          </ResponseAssertion>
-          <hashTree />
-        </hashTree>
-        <!-- Add a "read: ..." sampler here for each API endpoint the service gains (for example the dashboard summary and the batch trace). Only samplers labelled read: or write: are measured. -->
+        <!-- /health is not load tested: each call opens a Kafka connection, and it is meant for probes. Add a "read: ..." sampler here for each API endpoint the service gains (for example the dashboard summary and the batch trace). Only samplers labelled read: or write: are measured. -->
       </hashTree>
     </hashTree>
   </hashTree>
