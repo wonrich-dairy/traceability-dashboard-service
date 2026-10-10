@@ -481,6 +481,12 @@ $RECYCLE.BIN/
 # Vim temporary swap files
 *.swp
 
-.DS_Store
+# Local tooling and stray build output
 .claude/
 bin2/
+
+# Coverage reports
+coverage-report/
+
+# local secrets
+secrets.env
