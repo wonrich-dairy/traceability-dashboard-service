@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.IdentityModel.Tokens;
 using System.Security.Claims;
 using System.Text;
-using SRC.Authorization;
 
 namespace TraceabilityService.Api.Infrastructure
 {
@@ -67,15 +66,7 @@ namespace TraceabilityService.Api.Infrastructure
 
             services.AddAuthorizationBuilder()
                 .SetDefaultPolicy(authenticatedUser)
-                .SetFallbackPolicy(authenticatedUser)
-                .AddPolicy("ManageUsers", policy =>
-                    policy.RequireRole(WonrichRoles.SystemAdministrator))
-                .AddPolicy("ProcessingTechnician", policy =>
-                    policy.RequireRole(WonrichRoles.ProcessingTechnician, WonrichRoles.SystemAdministrator, WonrichRoles.ProductionManager))
-                .AddPolicy("FactoryIntake", policy =>
-                    policy.RequireRole(WonrichRoles.FactoryIntakeOfficer, WonrichRoles.ProcessingTechnician, WonrichRoles.SystemAdministrator))
-                .AddPolicy("QualityAnalyst", policy =>
-                    policy.RequireRole(WonrichRoles.QualityAnalyst, WonrichRoles.SystemAdministrator));
+                .SetFallbackPolicy(authenticatedUser);
             return services;
         }
     }
