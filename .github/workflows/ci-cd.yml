@@ -141,6 +141,7 @@ jobs:
         env:
           # Placeholder so EF can build the DbContext. Script generation never connects.
           ConnectionStrings__TraceabilityDb: "Server=localhost;Database=traceability;User=ci;Password=ci;"
+          Auth__SigningKey: "ci-placeholder-signing-key-at-least-32-chars"
         run: |
           dotnet tool restore
           mkdir -p artifacts

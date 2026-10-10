@@ -13,6 +13,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
       ConnectionStrings__TraceabilityDb: "${TRC_DB_CONNECTION:?Set TRC_DB_CONNECTION in .env}"
+      Auth__SigningKey: "${AUTH_SIGNING_KEY:?Set AUTH_SIGNING_KEY in .env}"
       # Defaults target the local broker; staging values go in .env.
       Kafka__BootstrapServers: "${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}"
       Kafka__SecurityProtocol: "${KAFKA_SECURITY_PROTOCOL:-Plaintext}"

@@ -60,7 +60,7 @@ This also creates the `wonrich-net` Docker network the service joins.
 
 ```bash
 cd ../traceability-dashboard-service
-cp .env.example .env        # then fill in TRC_DB_CONNECTION (ask the DevOps member)
+cp .env.example .env        # then fill in TRC_DB_CONNECTION and AUTH_SIGNING_KEY (ask the DevOps member)
 ```
 
 ### 3. Start
@@ -90,6 +90,7 @@ To run the whole platform (every service, frontend, Kafka and observability) wit
 ```bash
 cd src/TraceabilityService
 dotnet user-secrets set "ConnectionStrings:TraceabilityDb" '<connection-string>'
+dotnet user-secrets set "Auth:SigningKey" '<shared signing key>'
 dotnet run
 ```
 
@@ -102,6 +103,9 @@ Kafka is then reached at `localhost:29092`, the default in `appsettings.json`.
 | Setting | Environment variable | `.env` key (compose) | Description |
 |---|---|---|---|
 | `ConnectionStrings:TraceabilityDb` | `ConnectionStrings__TraceabilityDb` | `TRC_DB_CONNECTION` | MySQL connection string (required) |
+| `Auth:SigningKey` | `Auth__SigningKey` | `AUTH_SIGNING_KEY` | Shared JWT signing key, same value as the Auth Service (required, secret) |
+| `Auth:Issuer` | `Auth__Issuer` | | Expected token issuer, default `wonrich-auth` |
+| `Auth:Audience` | `Auth__Audience` | | Expected token audience, default `wonrich-services` |
 | `Kafka:BootstrapServers` | `Kafka__BootstrapServers` | `KAFKA_BOOTSTRAP_SERVERS` | Broker address |
 | `Kafka:SecurityProtocol` | `Kafka__SecurityProtocol` | `KAFKA_SECURITY_PROTOCOL` | `Plaintext` locally, `SaslPlaintext` on Azure |
 | `Kafka:SaslMechanism` | `Kafka__SaslMechanism` | `KAFKA_SASL_MECHANISM` | `Plain` on Azure |
@@ -123,6 +127,7 @@ Kafka is then reached at `localhost:29092`, the default in `appsettings.json`.
 | GET | `/health` | Service and dependency health (anonymous) |
 | GET | `/version` | Commit SHA of the running build (anonymous) |
 | GET | `/metrics` | Prometheus metrics (anonymous) |
+| GET | `/api/me` | The caller's user ID, name, role and facility from the JWT (requires a token) |
 
 Feature endpoints are added by the developer and documented here.
 

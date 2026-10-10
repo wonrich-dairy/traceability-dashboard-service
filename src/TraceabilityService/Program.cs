@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Prometheus;
+using TraceabilityService.Api.Infrastructure;
 using TraceabilityService.Api.Infrastructure.Persistence;
 using TraceabilityService.Health;
 using TraceabilityService.Observability;
@@ -12,6 +13,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers()
     .AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+
+builder.Services.AddOpenApi();
 
 // ── Database (MySQL) ─────────────────────────────────────────────────────────
 var connectionString = builder.Configuration.GetConnectionString("TraceabilityDb");
@@ -26,6 +29,10 @@ if (string.IsNullOrWhiteSpace(connectionString))
 // every environment gets the same SQL. Keep in step with the deployed MySQL.
 builder.Services.AddDbContext<TraceabilityDbContext>(options =>
     options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 46))));
+
+// ── Authentication and authorization (Auth Service tokens; deny anonymous by default) ──
+builder.Services.AddTraceabilityAuthentication(builder.Configuration);
+builder.Services.AddTraceabilityAuthorization();
 
 // ── CORS: the frontend's origins come from configuration (Cors__AllowedOrigins__0, ...) ──
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
@@ -62,7 +69,16 @@ if (app.Environment.IsDevelopment() || app.Environment.IsStaging())
     }
 }
 
+if (app.Environment.IsDevelopment())
+{
+    // Dev only: Swagger UI fetches the spec without a token
+    app.MapOpenApi().AllowAnonymous();
+    app.UseSwaggerUI(options => options.SwaggerEndpoint("/openapi/v1.json", "Traceability Service v1"));
+}
+
 app.UseCors("TraceabilityCors");
+app.UseAuthentication();
+app.UseAuthorization();
 
 // Health is anonymous (container probes and the post-deploy check).
 // Shape { status, checks: [ { name, status, description } ] } is what scripts/verify-health.sh
@@ -83,16 +99,16 @@ app.MapHealthChecks("/health", new HealthCheckOptions
             })
         }));
     }
-});
+}).AllowAnonymous();
 
 // Prometheus scrape endpoint, anonymous so Prometheus needs no token.
-app.MapMetrics();
+app.MapMetrics().AllowAnonymous();
 
 // Deployed commit, baked into the image as GIT_SHA. The pipeline waits for this to show the new SHA.
 app.MapGet("/version", () => Results.Ok(new
 {
     sha = Environment.GetEnvironmentVariable("GIT_SHA") ?? "local"
-}));
+})).AllowAnonymous();
 
 // Root descriptor
 app.MapGet("/", (IWebHostEnvironment env) => Results.Ok(new
@@ -102,10 +118,11 @@ app.MapGet("/", (IWebHostEnvironment env) => Results.Ok(new
     health = "/health",
     version = "/version",
     metrics = "/metrics",
-}));
+})).AllowAnonymous();
 
 app.MapControllers();
 
 app.Run();
 
+// Exposes Program to WebApplicationFactory<Program> in TraceabilityService.IntegrationTests
 public partial class Program;
