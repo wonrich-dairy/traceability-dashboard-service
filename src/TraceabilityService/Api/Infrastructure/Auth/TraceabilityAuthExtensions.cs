@@ -19,10 +19,20 @@ namespace TraceabilityService.Api.Infrastructure
             var issuer = configuration["Auth:Issuer"] ?? "wonrich-auth";
             var audience = configuration["Auth:Audience"] ?? "wonrich-services";
             // No fallback: a default key in source would let anyone who reads the repo mint valid tokens
-            var signingKey = configuration["Auth:SigningKey"]
-                ?? throw new InvalidOperationException(
-                    "Auth:SigningKey not found. Set it with: " +
-                    "dotnet user-secrets set \"Auth:SigningKey\" \"<shared signing key>\"");
+            var signingKey = configuration["Auth:SigningKey"];
+            if (string.IsNullOrWhiteSpace(signingKey))
+            {
+                throw new InvalidOperationException(
+                    "Auth:SigningKey is not configured. "
+                    + "Set it in .env (Docker), user secrets (dotnet run) or App Service settings (Azure).");
+            }
+
+            if (Encoding.UTF8.GetByteCount(signingKey) < 32)
+            {
+                throw new InvalidOperationException(
+                    "Auth:SigningKey is too short. HS256 needs at least 32 bytes; "
+                    + "use the same signing key as the Auth Service.");
+            }
 
             services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 .AddJwtBearer(options =>
