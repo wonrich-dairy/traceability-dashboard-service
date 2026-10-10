@@ -37,6 +37,7 @@ managed identity.
    | `ASPNETCORE_ENVIRONMENT` | `Staging` or `Production` |
    | `WEBSITES_PORT` | `8080` |
    | `ConnectionStrings__TraceabilityDb` | `Server=wonrichmysql.mysql.database.azure.com;Port=3306;Database=<db>;User=<user>;Password=<password>;SslMode=Required;` |
+   | `Auth__SigningKey` | **Secret.** Must be the same value as the Auth Service's `Auth__SigningKey`, or every token is rejected. At least 32 bytes; the app does not start without it |
    | `Kafka__BootstrapServers` | host and port from the table above |
    | `Kafka__SecurityProtocol` | `SaslPlaintext` |
    | `Kafka__SaslMechanism` | `Plain` |
