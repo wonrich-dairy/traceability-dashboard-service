@@ -1,0 +1,10 @@
+# Container image findings accepted after triage (SCRUM-112).
+#
+# Only High / Critical findings that have a fix available block the build, so an entry here is
+# needed only when a fix exists but cannot be taken yet. One CVE per line, with a comment above
+# it giving the reason, who triaged it, and when to look again. Remove the entry once fixed.
+#
+# Example:
+#   # libfoo in the base image; fixed in the next aspnet:10.0 patch, not yet published.
+#   # Triaged by Mitheja, 2026-09-26. Re-check when the base image updates.
+#   CVE-2026-00000

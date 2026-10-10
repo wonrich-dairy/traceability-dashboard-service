@@ -3,6 +3,7 @@
     <Project Path="src/TraceabilityService/TraceabilityService.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/TraceabilityService.Tests/TraceabilityService.Tests.csproj" />
+    <Project Path="tests/TraceabilityService.IntegrationTests/TraceabilityService.IntegrationTests.csproj" />
+    <Project Path="tests/TraceabilityService.UnitTests/TraceabilityService.UnitTests.csproj" />
   </Folder>
 </Solution>
