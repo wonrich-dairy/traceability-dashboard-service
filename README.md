@@ -154,6 +154,8 @@ Feature endpoints are added by the developer and documented here.
 
 EF Core migrations are applied on startup in Development and Staging. Production applies the pipeline's idempotent migration script before each deploy.
 
+The tables, their indexes, the coded values and the sample data are described in [docs/schema.md](docs/schema.md).
+
 ---
 
 ## Documentation
@@ -161,6 +163,7 @@ EF Core migrations are applied on startup in Development and Staging. Production
 | Topic | File |
 |---|---|
 | CI/CD pipeline, environments, rollback | [docs/ci-cd-pipeline.md](docs/ci-cd-pipeline.md) |
+| Database schema, coded values, sample data | [docs/schema.md](docs/schema.md) |
 | Tests and coverage | [docs/testing.md](docs/testing.md) |
 | Security scanning | [docs/security-scanning.md](docs/security-scanning.md) |
 | Performance test | [docs/performance-testing.md](docs/performance-testing.md) |
