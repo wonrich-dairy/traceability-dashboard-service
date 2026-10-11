@@ -1,0 +1,32 @@
+# Traceability Service on its own (SCRUM-124). The database is the remote MySQL server; there is no
+# database container. Kafka runs from wonrich-infra on the shared wonrich-net network, so start
+# that first:  (cd ../wonrich-infra && docker compose up -d)
+services:
+  traceability-service:
+    build:
+      context: .
+      args:
+        GIT_SHA: ${GIT_SHA:-local}
+    container_name: trc-api
+    ports:
+      - "${TRC_HOST_PORT:-5240}:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      ConnectionStrings__TraceabilityDb: "${TRC_DB_CONNECTION:?Set TRC_DB_CONNECTION in .env}"
+      Auth__SigningKey: "${AUTH_SIGNING_KEY:?Set AUTH_SIGNING_KEY in .env}"
+      # Defaults target the local broker; staging values go in .env.
+      Kafka__BootstrapServers: "${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}"
+      Kafka__SecurityProtocol: "${KAFKA_SECURITY_PROTOCOL:-Plaintext}"
+      Kafka__SaslMechanism: "${KAFKA_SASL_MECHANISM:-}"
+      Kafka__SaslUsername: "${KAFKA_SASL_USERNAME:-}"
+      Kafka__SaslPassword: "${KAFKA_SASL_PASSWORD:-}"
+      # MCC and Intake Service, for resolving consignment data (SCRUM-12, SCRUM-132)
+      MccIntake__BaseUrl: "${MCC_INTAKE_BASE_URL:-}"
+      MccIntake__ClientId: "${MCC_INTAKE_CLIENT_ID:-}"
+      MccIntake__ClientSecret: "${MCC_INTAKE_CLIENT_SECRET:-}"
+      Cors__AllowedOrigins__0: "${CORS_ORIGIN:-http://localhost:5173}"
+    networks: [wonrich-net]
+
+networks:
+  wonrich-net:
+    external: true

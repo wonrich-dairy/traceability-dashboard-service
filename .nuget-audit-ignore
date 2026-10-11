@@ -1,0 +1,7 @@
+# NuGet advisories accepted after triage (SCRUM-112). Read by scripts/nuget-audit.sh.
+#
+# One advisory URL per line, exactly as the audit prints it, followed by '#' and the reason:
+# why it cannot be upgraded yet, who triaged it, and when to look again. Remove it once fixed.
+#
+# Example:
+#   https://github.com/advisories/GHSA-xxxx-xxxx-xxxx  # test project only, never shipped; Mitheja 2026-09-26

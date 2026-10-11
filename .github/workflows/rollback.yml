@@ -1,0 +1,77 @@
+name: Rollback
+
+# Restore an earlier image on staging or production without rebuilding (SCRUM-123, SCRUM-128).
+#
+#   staging:    the live tag is "latest",     the default target is "previous"
+#   production: the live tag is "production", the default target is "production-previous"
+#
+# The database is never rolled back: migrations are kept backward compatible instead.
+# To roll forward again, run this workflow with the newer commit SHA as image_tag.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to roll back
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      image_tag:
+        description: '"previous" (the deployment before the current one) or a commit SHA'
+        required: true
+        default: previous
+
+# Shares the CI/CD group of the branch that deploys this environment, so a rollback and a
+# deployment never run at the same time.
+concurrency:
+  group: ci-cd-refs/heads/${{ inputs.environment == 'production' && 'main' || 'develop' }}
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: traceability
+
+jobs:
+  rollback:
+    name: Roll back ${{ inputs.environment }} to ${{ inputs.image_tag }}
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment }}
+      url: https://${{ vars.APP_HOST }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ACR login
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Point the live tag at the rollback image
+        id: retag
+        env:
+          TARGET_ENV: ${{ inputs.environment }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          [[ "$IMAGE_TAG" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "::error::image_tag '$IMAGE_TAG' is not a valid tag"; exit 1; }
+          if [ "$TARGET_ENV" = production ]; then
+            LIVE_TAG=production
+            [ "$IMAGE_TAG" = previous ] && IMAGE_TAG=production-previous
+          else
+            LIVE_TAG=latest
+          fi
+
+          REPO=${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}
+          docker pull "$REPO:$IMAGE_TAG"
+          SHA=$(docker image inspect "$REPO:$IMAGE_TAG" \
+                --format '{{range .Config.Env}}{{println .}}{{end}}' | grep '^GIT_SHA=' | cut -d= -f2)
+          echo "Rolling $TARGET_ENV back to $IMAGE_TAG (commit $SHA)"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          docker tag "$REPO:$IMAGE_TAG" "$REPO:$LIVE_TAG"
+          # Pushing the live tag triggers the environment's ACR webhook; App Service pulls and restarts.
+          docker push "$REPO:$LIVE_TAG"
+
+      - name: Verify /health (database check + rolled-back version)
+        run: bash scripts/verify-health.sh "${{ vars.APP_HOST }}" "${{ steps.retag.outputs.sha }}"

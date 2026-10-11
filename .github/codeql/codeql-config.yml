@@ -1,0 +1,20 @@
+# CodeQL configuration (SCRUM-112). Reviewed like code: any change to what is scanned, or any
+# finding accepted after triage, goes through a pull request.
+
+name: traceability CodeQL config
+
+queries:
+  - uses: security-extended
+
+# Test projects are not scanned: they never ship, and they deliberately hold throwaway
+# credentials for the Testcontainers MySQL database, which would be reported as hard-coded
+# secrets on every run.
+paths-ignore:
+  - tests
+
+# Findings accepted after triage. Excluding a rule turns it off for the whole repository, so
+# prefer fixing the code. Each entry needs a reason, who triaged it, and when to look again.
+#
+# query-filters:
+#   - exclude:
+#       id: cs/some-rule-id   # reason; Mitheja 2026-09-26; re-check in Sprint 4

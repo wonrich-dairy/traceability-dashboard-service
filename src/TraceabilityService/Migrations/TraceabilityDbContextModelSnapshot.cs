@@ -22,33 +22,54 @@ namespace TraceabilityService.Migrations
 
             MySqlModelBuilderExtensions.AutoIncrementColumns(modelBuilder);
 
-            modelBuilder.Entity("TraceabilityService.Domain.Entities.BatchSource", b =>
+            modelBuilder.Entity("TraceabilityService.Domain.Entities.AuditEntry", b =>
                 {
-                    b.Property<int>("Id")
+                    b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
+                        .HasColumnType("bigint");
 
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
 
-                    b.Property<string>("BatchId")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("varchar(50)");
-
-                    b.Property<string>("ConsignmentReference")
+                    b.Property<string>("Action")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
 
+                    b.Property<string>("Actor")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("CorrelationId")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("Details")
+                        .HasColumnType("json");
+
+                    b.Property<string>("EntityId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("datetime(6)");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("BatchId", "ConsignmentReference")
-                        .IsUnique();
+                    b.HasIndex("OccurredAt");
 
-                    b.ToTable("batch_sources", (string)null);
+                    b.HasIndex("EntityType", "EntityId", "OccurredAt");
+
+                    b.ToTable("audit_entries", (string)null);
                 });
 
-            modelBuilder.Entity("TraceabilityService.Domain.Entities.BatchTrace", b =>
+            modelBuilder.Entity("TraceabilityService.Domain.Entities.BatchRecord", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -61,32 +82,106 @@ namespace TraceabilityService.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("varchar(50)");
 
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)");
+                    b.Property<string>("BatchReference")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
 
-                    b.Property<string>("CurrentStatus")
+                    b.Property<string>("Completeness")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
 
-                    b.Property<string>("FinalLabOutcome")
+                    b.Property<string>("DispatchRef")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<string>("Facility")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<DateTime>("FirstEventAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("LastEventAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("ProductLine")
+                        .IsRequired()
                         .HasMaxLength(10)
                         .HasColumnType("varchar(10)");
 
-                    b.Property<DateOnly>("ProductionDate")
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BatchReference");
+
+                    b.HasIndex("DispatchRef");
+
+                    b.HasIndex("ProductLine", "Status");
+
+                    b.HasIndex("Status", "LastEventAt");
+
+                    b.HasIndex("Facility", "Status", "LastEventAt");
+
+                    b.ToTable("batch_records", (string)null);
+                });
+
+            modelBuilder.Entity("TraceabilityService.Domain.Entities.DailyQualityAggregate", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("BatchCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ClearedCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateOnly>("Date")
                         .HasColumnType("date");
+
+                    b.Property<int>("DeviationCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Facility")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<int>("FailedCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("OnHoldCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PendingCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ProductLine")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime(6)");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ProductionDate", "CurrentStatus");
+                    b.HasIndex("Facility", "Date", "ProductLine")
+                        .IsUnique();
 
-                    b.ToTable("batch_traces", (string)null);
+                    b.ToTable("daily_quality_aggregates", (string)null);
                 });
 
-            modelBuilder.Entity("TraceabilityService.Domain.Entities.CheckpointRecord", b =>
+            modelBuilder.Entity("TraceabilityService.Domain.Entities.DailyReasonCodeAggregate", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -94,91 +189,274 @@ namespace TraceabilityService.Migrations
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<string>("Appearance")
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<int>("DeviationCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Facility")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<string>("ProductLine")
+                        .IsRequired()
                         .HasMaxLength(10)
                         .HasColumnType("varchar(10)");
+
+                    b.Property<string>("ReasonCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Facility", "Date", "ProductLine", "ReasonCode")
+                        .IsUnique()
+                        .HasDatabaseName("IX_daily_reason_code_aggregates_Facility_Date_Line_Reason");
+
+                    b.ToTable("daily_reason_code_aggregates", (string)null);
+                });
+
+            modelBuilder.Entity("TraceabilityService.Domain.Entities.DeviationRecord", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
                     b.Property<string>("BatchId")
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("varchar(50)");
 
-                    b.Property<string>("CheckpointName")
+                    b.Property<string>("Checkpoint")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
 
-                    b.Property<decimal?>("ClrReading")
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<decimal?>("Limit")
                         .HasPrecision(5, 2)
                         .HasColumnType("decimal(5,2)");
 
-                    b.Property<string>("Colour")
-                        .HasMaxLength(10)
-                        .HasColumnType("varchar(10)");
-
-                    b.Property<decimal?>("FatPercentage")
+                    b.Property<decimal?>("ObservedValue")
                         .HasPrecision(5, 2)
                         .HasColumnType("decimal(5,2)");
 
-                    b.Property<decimal?>("PH")
-                        .HasPrecision(5, 2)
-                        .HasColumnType("decimal(5,2)");
-
-                    b.Property<DateTime>("RecordedAtTimestamp")
+                    b.Property<DateTime>("OccurredAt")
                         .HasColumnType("datetime(6)");
 
-                    b.Property<string>("Smell")
-                        .HasMaxLength(10)
-                        .HasColumnType("varchar(10)");
+                    b.Property<string>("Parameter")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
 
-                    b.Property<decimal?>("SnfPercentage")
-                        .HasPrecision(5, 2)
-                        .HasColumnType("decimal(5,2)");
+                    b.Property<string>("ReasonCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
 
-                    b.Property<string>("Taste")
-                        .HasMaxLength(10)
-                        .HasColumnType("varchar(10)");
-
-                    b.Property<decimal?>("TemperatureCelsius")
-                        .HasPrecision(5, 2)
-                        .HasColumnType("decimal(5,2)");
-
-                    b.Property<string>("Texture")
-                        .HasMaxLength(10)
-                        .HasColumnType("varchar(10)");
+                    b.Property<long>("TimelineEventId")
+                        .HasColumnType("bigint");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("BatchId", "RecordedAtTimestamp");
+                    b.HasIndex("TimelineEventId");
 
-                    b.ToTable("checkpoint_records", (string)null);
+                    b.HasIndex("BatchId", "OccurredAt");
+
+                    b.HasIndex("OccurredAt", "Checkpoint");
+
+                    b.HasIndex("ReasonCode", "OccurredAt");
+
+                    b.ToTable("deviation_records", (string)null);
                 });
 
-            modelBuilder.Entity("TraceabilityService.Domain.Entities.BatchSource", b =>
+            modelBuilder.Entity("TraceabilityService.Domain.Entities.ProcessedMessage", b =>
                 {
-                    b.HasOne("TraceabilityService.Domain.Entities.BatchTrace", null)
-                        .WithMany("Sources")
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("ConsumerGroup")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<DateTime>("ProcessedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("SourceEventId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Topic")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProcessedAt");
+
+                    b.HasIndex("ConsumerGroup", "SourceEventId")
+                        .IsUnique();
+
+                    b.ToTable("processed_messages", (string)null);
+                });
+
+            modelBuilder.Entity("TraceabilityService.Domain.Entities.TimelineEvent", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("BatchId")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<string>("Checkpoint")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("ContractVersion")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<bool>("IsDeviation")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("json");
+
+                    b.Property<string>("RecordedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<Guid>("SourceEventId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OccurredAt");
+
+                    b.HasIndex("SourceEventId")
+                        .IsUnique();
+
+                    b.HasIndex("BatchId", "OccurredAt");
+
+                    b.ToTable("timeline_events", (string)null);
+                });
+
+            modelBuilder.Entity("TraceabilityService.Domain.Entities.UpstreamSnapshot", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("BatchId")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<string>("FailureReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<DateTime?>("LastAttemptAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Payload")
+                        .HasColumnType("json");
+
+                    b.Property<string>("ResolutionStatus")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BatchId")
+                        .IsUnique();
+
+                    b.HasIndex("ResolutionStatus");
+
+                    b.ToTable("upstream_snapshots", (string)null);
+                });
+
+            modelBuilder.Entity("TraceabilityService.Domain.Entities.DeviationRecord", b =>
+                {
+                    b.HasOne("TraceabilityService.Domain.Entities.BatchRecord", null)
+                        .WithMany("Deviations")
+                        .HasForeignKey("BatchId")
+                        .HasPrincipalKey("BatchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("TraceabilityService.Domain.Entities.TimelineEvent", null)
+                        .WithMany()
+                        .HasForeignKey("TimelineEventId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("TraceabilityService.Domain.Entities.TimelineEvent", b =>
+                {
+                    b.HasOne("TraceabilityService.Domain.Entities.BatchRecord", null)
+                        .WithMany("TimelineEvents")
                         .HasForeignKey("BatchId")
                         .HasPrincipalKey("BatchId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("TraceabilityService.Domain.Entities.CheckpointRecord", b =>
+            modelBuilder.Entity("TraceabilityService.Domain.Entities.UpstreamSnapshot", b =>
                 {
-                    b.HasOne("TraceabilityService.Domain.Entities.BatchTrace", null)
-                        .WithMany("Checkpoints")
-                        .HasForeignKey("BatchId")
-                        .HasPrincipalKey("BatchId")
+                    b.HasOne("TraceabilityService.Domain.Entities.BatchRecord", null)
+                        .WithOne("UpstreamSnapshot")
+                        .HasForeignKey("TraceabilityService.Domain.Entities.UpstreamSnapshot", "BatchId")
+                        .HasPrincipalKey("TraceabilityService.Domain.Entities.BatchRecord", "BatchId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("TraceabilityService.Domain.Entities.BatchTrace", b =>
+            modelBuilder.Entity("TraceabilityService.Domain.Entities.BatchRecord", b =>
                 {
-                    b.Navigation("Checkpoints");
+                    b.Navigation("Deviations");
 
-                    b.Navigation("Sources");
+                    b.Navigation("TimelineEvents");
+
+                    b.Navigation("UpstreamSnapshot");
                 });
 #pragma warning restore 612, 618
         }
