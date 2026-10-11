@@ -6,6 +6,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Prometheus;
 using TraceabilityService.Api.Infrastructure;
 using TraceabilityService.Api.Infrastructure.Persistence;
+using TraceabilityService.Application;
 using TraceabilityService.Health;
 using TraceabilityService.Observability;
 
@@ -29,6 +30,9 @@ if (string.IsNullOrWhiteSpace(connectionString))
 // every environment gets the same SQL. Keep in step with the deployed MySQL.
 builder.Services.AddDbContext<TraceabilityDbContext>(options =>
     options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 46))));
+
+// ── Read model queries ───────────────────────────────────────────────────────
+builder.Services.AddScoped<IBatchRecordService, BatchRecordService>();
 
 // ── Authentication and authorization (Auth Service tokens; deny anonymous by default) ──
 builder.Services.AddTraceabilityAuthentication(builder.Configuration);
