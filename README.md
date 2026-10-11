@@ -130,6 +130,11 @@ Kafka is then reached at `localhost:29092`, the default in `appsettings.json`.
 | GET | `/api/me` | The caller's user ID, name, role and facility from the JWT (requires a token) |
 | GET | `/api/batches/{batchId}` | One batch's full record: summary, upstream status, four checkpoint sections (MCC, Factory Intake, Processing, Quality Lab) each with a state, records and deviations, and links from dispatch to tanks, consignments and societies. 404 problem response if no batch has that ID (QualityControlOfficer or SystemAdministrator) |
 | GET | `/api/batches?dispatchRef=…` or `?batchReference=WR-…` | Summaries of the matching batches, oldest first. One dispatch can feed several batches, so this is always a list; no match is an empty list, not a 404. With both filters, a batch must match both; with neither, 400 (QualityControlOfficer or SystemAdministrator) |
+| GET | `/api/dashboard/summary` | Pending, cleared, failed and on-hold counts for today and for the range, and deviations per checkpoint over the range (QualityControlOfficer or SystemAdministrator) |
+| GET | `/api/dashboard/trend` | Per day and product line: batch, cleared and failed counts and `failRate` = failed ÷ (cleared + failed), null when nothing was decided (QualityControlOfficer or SystemAdministrator) |
+| GET | `/api/dashboard/failure-reasons` | Deviation reason codes over the range, most frequent first (QualityControlOfficer or SystemAdministrator) |
+| GET | `/api/dashboard/recent-failures?limit=…` | The latest failed batches, newest first, each with its reason codes and `tracePath` to its batch record. `limit` 1–50, default 10 (QualityControlOfficer or SystemAdministrator) |
+| GET | `/api/dashboard/societies?limit=…` | The most marginal societies behind the batches in range: the closest their milk came to a rejection limit at the MCC gate, and on which measure. Unscored societies last. `limit` 1–50, default 10 (QualityControlOfficer or SystemAdministrator) |
 
 Feature endpoints are added by the developer and documented here.
 
@@ -143,7 +148,19 @@ Each checkpoint section of a batch record has a `state`:
 
 The MCC and Factory Intake sections and the links come from the upstream snapshot, whose JSON shape is a contract described in [docs/schema.md](docs/schema.md#upstream_snapshotspayload). `BatchRecordAssembler` builds the response without touching the database, so these rules are covered by unit tests.
 
-The `/api/batches` endpoints use the `QualityControl` policy (`TraceabilityPolicies.QualityControl`): no token is 401, and a valid token with any role other than `QualityControlOfficer` or `SystemAdministrator` is 403. The SCRUM-135 dashboard endpoints use the same policy.
+The `/api/batches` and `/api/dashboard` endpoints use the `QualityControl` policy (`TraceabilityPolicies.QualityControl`): no token is 401, and a valid token with any role other than `QualityControlOfficer` or `SystemAdministrator` is 403.
+
+Every dashboard endpoint takes the same optional filters, and echoes them back in its response:
+
+| Parameter | Default | Rule |
+|---|---|---|
+| `facility` | every facility | |
+| `productLine` | every product line | One of `FM`, `FLM`, `SY`, `SK`, `DY`, `CD`, in any case; anything else is 400 |
+| `from`, `to` | the 30 days ending today | Production days, `yyyy-MM-dd`, both inclusive. `from` after `to` is 400, and so is a range longer than one year |
+
+"Today" is the date in Asia/Colombo. An empty range is a valid answer with zero counts, not an error. Every response carries `dataAsOf`, the latest `processed_messages.ProcessedAt`, or null if nothing has been processed yet. Recent failures are those whose failure (the batch's last event) was recorded on one of the range's days in Colombo.
+
+Per-society quality data is not kept (TR-12 is descoped), so the societies panel reads the cached upstream snapshots of batches whose first event falls in the range, and says so: every response carries `source: "upstream snapshots"` and `coverage: "societies that contributed to a batch in range"` for the screen to show. Batches whose snapshot has not resolved contribute nothing.
 
 `/health` returns:
 

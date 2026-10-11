@@ -113,6 +113,7 @@ Null = the column accepts `NULL`. Every `Id` is the primary key.
 | `IX_batch_records_Facility_Status_LastEventAt` | `Facility`, `Status`, `LastEventAt` | | A facility's failed or on-hold batches, newest first |
 | `IX_batch_records_Status_LastEventAt` | `Status`, `LastEventAt` | | The same across all facilities |
 | `IX_batch_records_ProductLine_Status` | `ProductLine`, `Status` | | Counts by status within a product line, e.g. failed FM batches |
+| `IX_batch_records_Facility_FirstEventAt` | `Facility`, `FirstEventAt` | | The societies panel: one facility's batches whose first event falls in the date window, before their snapshots are read. Not used when no facility is given |
 
 #### Batch reference
 
@@ -222,7 +223,11 @@ One event can produce several rows: a lab result with low pH and abnormal taste 
 | `ClearedCount` | `int` | | `Status = Cleared` |
 | `FailedCount` | `int` | | `Status = Failed` |
 | `OnHoldCount` | `int` | | `Status = OnHold` |
-| `DeviationCount` | `int` | | All `deviation_records` rows for these batches. Broken down by reason in `daily_reason_code_aggregates` |
+| `DeviationCount` | `int` | | All `deviation_records` rows for these batches. Broken down by reason in `daily_reason_code_aggregates`, and by checkpoint in the four columns below |
+| `MccDeviationCount` | `int` | | Deviations reported at the MCC |
+| `IntakeDeviationCount` | `int` | | Deviations reported at factory intake |
+| `ProcessingDeviationCount` | `int` | | Deviations reported during processing |
+| `LabDeviationCount` | `int` | | Deviations reported by the lab. The four checkpoint counts add up to `DeviationCount`. They are stored rather than counted per request because `deviation_records` has no facility column, so a per-facility count would join it to `batch_records` every time |
 | `UpdatedAt` | `datetime(6)` | | Last time the row was recalculated |
 
 The pass rate is `ClearedCount / (ClearedCount + FailedCount)` and is not stored. Pending and on-hold batches are in `BatchCount` but neither outcome, so dividing by `BatchCount` instead gives a wrong, lower rate. With no decided batches the rate does not exist; show it as empty, not 0%.
@@ -395,7 +400,9 @@ Check field names against the real contract before relying on them in a query.
             "snfPercentage": 8.52,
             "clrReading": 27.80,
             "temperatureC": 4.40,
-            "verdict": "Accepted"
+            "verdict": "Accepted",
+            "tightestMargin": 0.0024,
+            "tightestMeasure": "Snf"
           }
         }
       ]
@@ -430,6 +437,8 @@ Check field names against the real contract before relying on them in a query.
 | `…panel.clrReading` | number | Yes | | `CorrectedClr` |
 | `…panel.temperatureC` | number | Yes | | `TemperatureCelsius` |
 | `…panel.verdict` | string | Yes | | `Verdict` |
+| `…panel.tightestMargin` | number | No | How close the closest measure came to the limit that would have rejected it, as a fraction of that limit: 0 is on it. Null when it could not be scored; do not copy the upstream `-1` placeholder | `TracedConsignmentView.TightestMargin` |
+| `…panel.tightestMeasure` | string | No | Which measure that was, e.g. `Snf`, `FatPercent` | `QualityTest.Margins[0].Measure` (the list is tightest first) |
 
 Rules:
 
@@ -444,6 +453,7 @@ How the batch record endpoint uses it:
 | MCC section | One record for `dispatch` (time `dispatchedAt`, user `dispatchedBy`) and one per consignment (time `registeredAt`, user `registeredBy`, with its panel) |
 | Factory Intake section | One record for `intake` (time `screenedAt`, user `screenedBy`) |
 | Links | `dispatch` → `tanks` (code, quantity drawn) → `consignments` → `society` |
+| `GET /api/dashboard/societies` | Every consignment's `society` and `panel.tightestMargin` / `tightestMeasure`, across the resolved snapshots of the batches in range. TR-12 is descoped, so there is no per-society table and this is parsed on each request |
 
 ---
 
@@ -466,6 +476,7 @@ Nothing else cascades. Deleting a batch leaves its `audit_entries` (they are mea
 | `20260920172550_AddBatchTraceProductionDateStatusIndex` | Index on `batch_traces (ProductionDate, CurrentStatus)` |
 | `20261010175413_ReplaceBatchTraceWithReadModel` | Drops the three original tables and creates the eight above. Down drops them and recreates the originals, empty |
 | `20261011021748_AddBatchRecordBatchReference` | Adds the nullable `batch_records.BatchReference` and its index. Down removes both |
+| `20261011180541_AddDailyAggregateCheckpointDeviationCounts` | Adds `MccDeviationCount`, `IntakeDeviationCount`, `ProcessingDeviationCount` and `LabDeviationCount` to `daily_quality_aggregates`, each defaulting to 0, and the index `IX_batch_records_Facility_FirstEventAt` for the societies panel. Existing rows are not backfilled: recalculate them, or reload the sample data. Down removes the four columns and the index |
 
 `ReplaceBatchTraceWithReadModel` drops tables, which the rules in [database.md](database.md) do not normally allow. It is safe here only because the original tables never reached staging or production, so no deployed version depends on them. Any data in them is lost on upgrade; for a development database, reload it from the sample data. Later migrations must follow the add-only rule.
 

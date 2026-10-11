@@ -34,7 +34,9 @@ The test writes nothing.
 
 ## Seed data for the batch endpoints
 
-The batch record endpoints (`/api/batches/…`, SCRUM-133) need data to read. `perf/seed-batches.sql` generates 1,000 batches, `PERF-1000` to `PERF-1999`, each with an upstream snapshot in the contract shape, timeline events and some deviations. Two batches share each dispatch note and batch reference, `DN-PERF-1000` / `WR-PERF-1000` to `…-1499`, so the list lookups return two rows. The IDs are predictable so a sampler can pick one at random, e.g. `/api/batches/PERF-${__Random(1000,1999)}`.
+The batch record endpoints (`/api/batches/…`, SCRUM-133) and the dashboard (`/api/dashboard/…`, SCRUM-135) need data to read. `perf/seed-batches.sql` generates 1,000 batches, `PERF-1000` to `PERF-1999`, at their own facility, `FACTORY-PERF`, each with an upstream snapshot in the contract shape, timeline events and some deviations. It also fills both daily aggregate tables from them, as the consumers would. Two batches share each dispatch note and batch reference, `DN-PERF-1000` / `WR-PERF-1000` to `…-1499`, so the list lookups return two rows. The IDs are predictable so a sampler can pick one at random, e.g. `/api/batches/PERF-${__Random(1000,1999)}`.
+
+The batches all fall in August 2026, so the dashboard samplers ask for `?facility=FACTORY-PERF&from=2026-08-01&to=2026-08-31`. Over that range the societies panel reads all 980 resolved snapshots, the heaviest query the dashboard has.
 
 Load it into the **staging** database before the run, and remove it afterwards:
 
