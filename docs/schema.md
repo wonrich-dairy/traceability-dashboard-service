@@ -97,6 +97,7 @@ Null = the column accepts `NULL`. Every `Id` is the primary key.
 | `Id` | `int` | | Auto-increment |
 | `BatchId` | `varchar(50)` | | Batch code `[day]-[product]-[set]`, e.g. `262-FM-B`. Unique |
 | `DispatchRef` | `varchar(50)` | Yes | MCC dispatch number, e.g. `DN-20260919-02`. Null until an event that carries it arrives |
+| `BatchReference` | `varchar(50)` | Yes | The reference factory intake gives the bowser's load, e.g. `WR-20260919-02`. Null until the upstream lookup resolves. See [Batch reference](#batch-reference) |
 | `ProductLine` | `varchar(10)` | | Product code from the batch code. See [Product lines](#product-lines) |
 | `Facility` | `varchar(50)` | | The factory the batch was made at, e.g. `FACTORY-01` |
 | `Status` | `varchar(20)` | | See [Batch status](#batch-status) |
@@ -108,9 +109,27 @@ Null = the column accepts `NULL`. Every `Id` is the primary key.
 |---|---|---|---|
 | `AK_batch_records_BatchId` | `BatchId` | Yes | Lookup by batch code; target of the child foreign keys |
 | `IX_batch_records_DispatchRef` | `DispatchRef` | | A trace that starts from the dispatch number |
+| `IX_batch_records_BatchReference` | `BatchReference` | | A trace that starts from the factory batch reference. Not unique: see below |
 | `IX_batch_records_Facility_Status_LastEventAt` | `Facility`, `Status`, `LastEventAt` | | A facility's failed or on-hold batches, newest first |
 | `IX_batch_records_Status_LastEventAt` | `Status`, `LastEventAt` | | The same across all facilities |
 | `IX_batch_records_ProductLine_Status` | `ProductLine`, `Status` | | Counts by status within a product line, e.g. failed FM batches |
+
+#### Batch reference
+
+A batch has three identifiers, each from a different service:
+
+| Column | Example | Issued by | When |
+|---|---|---|---|
+| `DispatchRef` | `DN-20260919-02` | MCC and Intake Service, MCC side | The bowser leaves the chilling centre |
+| `BatchReference` | `WR-20260919-02` | MCC and Intake Service, factory intake | The bowser passes screening at the factory gate (SCRUM-9) |
+| `BatchId` | `262-FM-B` | Processing Service | The milk is allocated to a mixing tank |
+
+No Kafka event carries `BatchReference`: the MCC and Intake Service publishes no events, and Processing's and Quality Lab's events carry `BatchId` and the dispatch number only. It comes from the same lookup as the upstream snapshot:
+
+1. `GET /api/factory/batches?dispatchNote={DispatchRef}` returns the batch for that dispatch note, including its `reference`. A dispatch note produces at most one batch (unique in the MCC and Intake database), so the answer is unambiguous.
+2. `GET /api/factory/batches/{reference}/trace` returns the dispatch note, tanks and consignments for the snapshot's `Payload`.
+
+The index is not unique because Processing can split one dispatch across several mixing-tank batches, and each of them carries the same reference. A lookup by `BatchReference` can therefore return more than one row.
 
 ### `timeline_events`
 
@@ -160,7 +179,7 @@ SELECT s.BatchId, c.reference
 FROM upstream_snapshots s,
      JSON_TABLE(s.Payload, '$.tanks[*].consignments[*]'
          COLUMNS (reference varchar(100) PATH '$.reference',
-                  society   varchar(10)  PATH '$.society')) c
+                  society   varchar(10)  PATH '$.society.code')) c
 WHERE c.society = 'VS014';
 ```
 
@@ -342,21 +361,42 @@ Check field names against the real contract before relying on them in a query.
 
 ### `upstream_snapshots.Payload`
 
-The whole tree the MCC and Intake Service returns for the batch's dispatch: the dispatch note, the tanks it drew from with the quantity drawn from each, and each tank's consignments with their society and quality panel values.
+**This is a contract.** The resolver (SCRUM-132) writes exactly this shape, and the batch record endpoint reads it: the MCC and Factory Intake sections and the links (dispatch → tanks → consignments → societies) all come from here. In code it is `UpstreamSnapshotPayload` (`Domain/Entities/UpstreamSnapshotPayload.cs`); write it with `UpstreamSnapshotPayload.Serialize` and read it with `UpstreamSnapshotPayload.Parse`, so both sides use the same field names and JSON options. Change the shape there and here together.
 
 ```json
 {
-  "dispatchNote": { "number": "DN-20260919-02", "dispatchedAt": "2026-09-19T05:40:00Z" },
+  "batchReference": "WR-20260919-02",
+  "dispatch": {
+    "reference": "DN-20260919-02",
+    "dispatchedAt": "2026-09-19T05:40:00Z",
+    "dispatchedBy": "mcc.manager",
+    "bowserRegistration": "BWR-02",
+    "totalLitres": 910
+  },
+  "intake": {
+    "arrivedAt": "2026-09-19T08:05:00Z",
+    "screenedAt": "2026-09-19T08:05:00Z",
+    "screenedBy": "intake.officer",
+    "temperatureC": 9.80
+  },
   "tanks": [
     {
-      "tankCode": "T1",
+      "code": "T1",
       "quantityDrawnLitres": 560,
       "consignments": [
         {
           "reference": "CON-20260919-VS009",
-          "society": "VS009",
+          "society": { "code": "VS009", "name": "Society VS009" },
           "volumeLitres": 300,
-          "panel": { "fatPercentage": 4.03, "snfPercentage": 8.52, "clrReading": 27.80 }
+          "registeredAt": "2026-09-19T05:00:00Z",
+          "registeredBy": "intake.officer.vs009",
+          "panel": {
+            "fatPercentage": 4.03,
+            "snfPercentage": 8.52,
+            "clrReading": 27.80,
+            "temperatureC": 4.40,
+            "verdict": "Accepted"
+          }
         }
       ]
     }
@@ -364,7 +404,46 @@ The whole tree the MCC and Intake Service returns for the batch's dispatch: the 
 }
 ```
 
-This is the shape the sample data uses. The service's real response may differ; check it before writing the resolver.
+| Field | Type | Required | Meaning | From the MCC and Intake Service |
+|---|---|---|---|---|
+| `batchReference` | string | Yes | The factory batch reference | `BatchTraceView.BatchReference` |
+| `dispatch.reference` | string | Yes | The dispatch note | `DispatchNoteReference` |
+| `dispatch.dispatchedAt` | timestamp | Yes | When the bowser left the MCC | `DispatchedAtLocal`, converted to UTC |
+| `dispatch.dispatchedBy` | string | No | Who dispatched it | `DispatchedBy` |
+| `dispatch.bowserRegistration` | string | No | | `BowserRegistration` |
+| `dispatch.totalLitres` | number | Yes | Total on the dispatch note | `TotalDispatchedLitres` |
+| `intake.arrivedAt` | timestamp | Yes | When the bowser reached the factory | `ArrivedAtLocal`, converted to UTC |
+| `intake.screenedAt` | timestamp | Yes | When it passed screening | `ScreenedAtUtc` |
+| `intake.screenedBy` | string | No | Who screened it | `ScreenedBy` |
+| `intake.temperatureC` | number | No | Arrival temperature | `BatchView.ArrivalTemperatureCelsius`, from the lookup by dispatch note |
+| `tanks[].code` | string | Yes | MCC tank | `TracedTankView.TankCode` |
+| `tanks[].quantityDrawnLitres` | number | Yes | What the bowser drew from it | `QuantityDrawnLitres` |
+| `tanks[].consignments[].reference` | string | Yes | The consignment | `TracedConsignmentView.Reference` |
+| `…consignments[].society.code` | string | Yes | Village society | `SocietyCode` |
+| `…consignments[].society.name` | string | No | | `SocietyName` |
+| `…consignments[].volumeLitres` | number | Yes | | `QuantityLitres` |
+| `…consignments[].registeredAt` | timestamp | Yes | When it was registered at the MCC gate | `RegisteredAtUtc` |
+| `…consignments[].registeredBy` | string | No | Who registered it | `RegisteredBy` |
+| `…consignments[].panel` | object | No | The gate quality test; absent if none was recorded | `QualityTest` |
+| `…panel.fatPercentage` | number | Yes | | `FatPercent` |
+| `…panel.snfPercentage` | number | Yes | | `Snf` |
+| `…panel.clrReading` | number | Yes | | `CorrectedClr` |
+| `…panel.temperatureC` | number | Yes | | `TemperatureCelsius` |
+| `…panel.verdict` | string | Yes | | `Verdict` |
+
+Rules:
+
+- **Times are UTC**, written with a `Z`. The MCC and Intake Service's `…Local` fields are factory local time and must be converted before they are stored.
+- **camelCase field names.** Fields not listed are ignored on read, so the resolver may store more without breaking anything; it may not rename or drop a required one.
+- **Only when resolved.** `Payload` is null for `PendingRetry` and `Unavailable` rows; a partial tree is never stored.
+
+How the batch record endpoint uses it:
+
+| Part of the response | Reads |
+|---|---|
+| MCC section | One record for `dispatch` (time `dispatchedAt`, user `dispatchedBy`) and one per consignment (time `registeredAt`, user `registeredBy`, with its panel) |
+| Factory Intake section | One record for `intake` (time `screenedAt`, user `screenedBy`) |
+| Links | `dispatch` → `tanks` (code, quantity drawn) → `consignments` → `society` |
 
 ---
 
@@ -385,7 +464,8 @@ Nothing else cascades. Deleting a batch leaves its `audit_entries` (they are mea
 |---|---|
 | `20260920140432_InitialCreate` | The first model: `batch_traces`, `batch_sources`, `checkpoint_records` |
 | `20260920172550_AddBatchTraceProductionDateStatusIndex` | Index on `batch_traces (ProductionDate, CurrentStatus)` |
-| `20261010174332_ReplaceBatchTraceWithReadModel` | Drops the three original tables and creates the eight above. Down drops them and recreates the originals, empty |
+| `20261010175413_ReplaceBatchTraceWithReadModel` | Drops the three original tables and creates the eight above. Down drops them and recreates the originals, empty |
+| `20261011021748_AddBatchRecordBatchReference` | Adds the nullable `batch_records.BatchReference` and its index. Down removes both |
 
 `ReplaceBatchTraceWithReadModel` drops tables, which the rules in [database.md](database.md) do not normally allow. It is safe here only because the original tables never reached staging or production, so no deployed version depends on them. Any data in them is lost on upgrade; for a development database, reload it from the sample data. Later migrations must follow the add-only rule.
 
