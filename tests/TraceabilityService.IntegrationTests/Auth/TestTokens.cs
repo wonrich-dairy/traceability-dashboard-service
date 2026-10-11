@@ -23,7 +23,8 @@ internal static class TestTokens
         string issuer = TraceabilityApiFactory.Issuer,
         string audience = TraceabilityApiFactory.Audience,
         DateTime? issuedAt = null,
-        TimeSpan? lifetime = null)
+        TimeSpan? lifetime = null,
+        string role = Role)
     {
         var notBefore = issuedAt ?? DateTime.UtcNow;
         var expires = notBefore + (lifetime ?? TimeSpan.FromMinutes(60));
@@ -34,7 +35,7 @@ internal static class TestTokens
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
             new(ClaimTypes.NameIdentifier, UserId),
             new(ClaimTypes.Name, UserName),
-            new(ClaimTypes.Role, Role),
+            new(ClaimTypes.Role, role),
             new(WonrichClaims.Facility, Facility)
         };
 
