@@ -128,8 +128,22 @@ Kafka is then reached at `localhost:29092`, the default in `appsettings.json`.
 | GET | `/version` | Commit SHA of the running build (anonymous) |
 | GET | `/metrics` | Prometheus metrics (anonymous) |
 | GET | `/api/me` | The caller's user ID, name, role and facility from the JWT (requires a token) |
+| GET | `/api/batches/{batchId}` | One batch's full record: summary, upstream status, four checkpoint sections (MCC, Factory Intake, Processing, Quality Lab) each with a state, records and deviations, and links from dispatch to tanks, consignments and societies. 404 problem response if no batch has that ID (QualityControlOfficer or SystemAdministrator) |
+| GET | `/api/batches?dispatchRef=…` or `?batchReference=WR-…` | Summaries of the matching batches, oldest first. One dispatch can feed several batches, so this is always a list; no match is an empty list, not a 404. With both filters, a batch must match both; with neither, 400 (QualityControlOfficer or SystemAdministrator) |
 
 Feature endpoints are added by the developer and documented here.
+
+Each checkpoint section of a batch record has a `state`:
+
+| State | Meaning |
+|---|---|
+| `Recorded` | The checkpoint has data |
+| `NotYetReached` | No data, and the batch has not got that far yet, e.g. the Lab section while the status is still `Processing`. Only Processing and Quality Lab can be in this state |
+| `NoDataReceived` | No data although the batch is past this point: a later checkpoint has data, or the status is past it. MCC and Factory Intake with no data are always this: a batch only exists once it has passed factory intake. The `upstream` block says why their data is missing (lookup not run yet, `PendingRetry`, or `Unavailable`) |
+
+The MCC and Factory Intake sections and the links come from the upstream snapshot, whose JSON shape is a contract described in [docs/schema.md](docs/schema.md#upstream_snapshotspayload). `BatchRecordAssembler` builds the response without touching the database, so these rules are covered by unit tests.
+
+The `/api/batches` endpoints use the `QualityControl` policy (`TraceabilityPolicies.QualityControl`): no token is 401, and a valid token with any role other than `QualityControlOfficer` or `SystemAdministrator` is 403. The SCRUM-135 dashboard endpoints use the same policy.
 
 `/health` returns:
 

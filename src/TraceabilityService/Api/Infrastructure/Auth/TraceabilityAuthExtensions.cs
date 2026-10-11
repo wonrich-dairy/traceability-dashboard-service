@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.IdentityModel.Tokens;
 using System.Security.Claims;
 using System.Text;
+using SRC.Authorization;
 
 namespace TraceabilityService.Api.Infrastructure
 {
@@ -66,7 +67,11 @@ namespace TraceabilityService.Api.Infrastructure
 
             services.AddAuthorizationBuilder()
                 .SetDefaultPolicy(authenticatedUser)
-                .SetFallbackPolicy(authenticatedUser);
+                .SetFallbackPolicy(authenticatedUser)
+                // No token is still 401; a valid token without one of these roles is 403.
+                .AddPolicy(TraceabilityPolicies.QualityControl, policy => policy
+                    .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme)
+                    .RequireRole(WonrichRoles.QualityControlOfficer, WonrichRoles.SystemAdministrator));
             return services;
         }
     }

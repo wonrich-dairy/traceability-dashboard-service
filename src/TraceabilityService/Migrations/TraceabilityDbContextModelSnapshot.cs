@@ -82,6 +82,10 @@ namespace TraceabilityService.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("varchar(50)");
 
+                    b.Property<string>("BatchReference")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
                     b.Property<string>("Completeness")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -113,6 +117,8 @@ namespace TraceabilityService.Migrations
                         .HasColumnType("varchar(20)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("BatchReference");
 
                     b.HasIndex("DispatchRef");
 

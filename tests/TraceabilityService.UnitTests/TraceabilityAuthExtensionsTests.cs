@@ -1,5 +1,8 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization.Infrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using SRC.Authorization;
 using TraceabilityService.Api.Infrastructure;
 
 namespace TraceabilityService.UnitTests;
@@ -45,5 +48,22 @@ public class TraceabilityAuthExtensionsTests
             services.AddTraceabilityAuthentication(ConfigWithSigningKey(Key32Bytes)));
 
         Assert.Null(ex);
+    }
+
+    [Fact]
+    public async Task Quality_control_policy_requires_exactly_quality_control_officer_or_system_administrator()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddTraceabilityAuthorization();
+        var provider = services.BuildServiceProvider().GetRequiredService<IAuthorizationPolicyProvider>();
+
+        var policy = await provider.GetPolicyAsync(TraceabilityPolicies.QualityControl);
+
+        Assert.NotNull(policy);
+        var roles = Assert.Single(policy.Requirements.OfType<RolesAuthorizationRequirement>());
+        Assert.Equal(
+            [WonrichRoles.QualityControlOfficer, WonrichRoles.SystemAdministrator],
+            roles.AllowedRoles.Order());
     }
 }

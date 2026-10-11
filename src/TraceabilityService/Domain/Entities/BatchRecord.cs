@@ -40,6 +40,13 @@ public class BatchRecord
     // it has arrived.
     public string? DispatchRef{get; set;}
 
+    // The batch reference factory intake gives the bowser's load when it passes
+    // screening, e.g. WR-20260919-02. No event carries it: it comes from the MCC and
+    // Intake Service's batch lookup by dispatch note, so it is null until that has
+    // resolved. Not unique: one dispatch can be split across several Processing
+    // batches, and each of them carries the same reference.
+    public string? BatchReference{get; set;}
+
     // Product code from the batch code: FM, FLM, SY, SK, DY or CD.
     public required string ProductLine{get; set;}
 

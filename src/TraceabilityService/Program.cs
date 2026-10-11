@@ -6,6 +6,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Prometheus;
 using TraceabilityService.Api.Infrastructure;
 using TraceabilityService.Api.Infrastructure.Persistence;
+using TraceabilityService.Application;
 using TraceabilityService.Health;
 using TraceabilityService.Observability;
 
@@ -30,6 +31,9 @@ if (string.IsNullOrWhiteSpace(connectionString))
 builder.Services.AddDbContext<TraceabilityDbContext>(options =>
     options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 46))));
 
+// ── Read model queries ───────────────────────────────────────────────────────
+builder.Services.AddScoped<IBatchRecordService, BatchRecordService>();
+
 // ── Authentication and authorization (Auth Service tokens; deny anonymous by default) ──
 builder.Services.AddTraceabilityAuthentication(builder.Configuration);
 builder.Services.AddTraceabilityAuthorization();
@@ -45,6 +49,7 @@ builder.Services.AddCors(options => options.AddPolicy("TraceabilityCors", policy
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<TraceabilityDbContext>("mysql")
     .AddCheck<KafkaHealthCheck>("kafka", failureStatus: HealthStatus.Degraded);
+
 
 var app = builder.Build();
 

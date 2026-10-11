@@ -28,6 +28,13 @@ public class BatchRecordConfiguration : IEntityTypeConfiguration<BatchRecord>
         // A trace can start from the dispatch number rather than the batch code.
         builder.HasIndex(b => b.DispatchRef);
 
+        builder.Property(b => b.BatchReference)
+            .HasMaxLength(50);
+
+        // Or from the factory batch reference. Not unique: the Processing batches
+        // made from one dispatch share it.
+        builder.HasIndex(b => b.BatchReference);
+
         builder.Property(b => b.ProductLine)
             .IsRequired()
             .HasMaxLength(10);

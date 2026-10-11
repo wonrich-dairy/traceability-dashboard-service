@@ -32,6 +32,22 @@ The test writes nothing.
 
 ---
 
+## Seed data for the batch endpoints
+
+The batch record endpoints (`/api/batches/…`, SCRUM-133) need data to read. `perf/seed-batches.sql` generates 1,000 batches, `PERF-1000` to `PERF-1999`, each with an upstream snapshot in the contract shape, timeline events and some deviations. Two batches share each dispatch note and batch reference, `DN-PERF-1000` / `WR-PERF-1000` to `…-1499`, so the list lookups return two rows. The IDs are predictable so a sampler can pick one at random, e.g. `/api/batches/PERF-${__Random(1000,1999)}`.
+
+Load it into the **staging** database before the run, and remove it afterwards:
+
+```bash
+mysql -h wonrichmysql.mysql.database.azure.com -u trc_app -p \
+  --ssl-mode=REQUIRED traceability < perf/seed-batches.sql
+mysql … traceability < perf/reset-seed-batches.sql    # removes every PERF- batch, nothing else
+```
+
+Both scripts can be run twice safely. Never run them against `traceability_prod`.
+
+---
+
 ## Load profile
 
 | Setting | Default | Input |

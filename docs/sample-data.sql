@@ -7,13 +7,23 @@
 -- batches carry the stories the dashboard and the FR7 backward trace are
 -- demonstrated with:
 --   262-FM-A  clean pass, all four checkpoints
---   262-FM-B  lab failure with a traceable upstream cause (the demo batch)
+--   262-FM-B  lab failure with a traceable upstream cause (the demo batch);
+--             drawn from two MCC tanks
 --   263-FM-A  in progress, no Processing or Lab events yet, upstream not fetched yet
 --   262-FM-C  second pass, so FM's pass rate is not 2-of-4 by coincidence
+-- and, for the SCRUM-133 Definition of Done:
+--   263-SY-A  stopped at intake: MCC and Factory Intake recorded, nothing after
+--   262-FM-B  and nine others drawn from more than one tank
 --
 -- Batch code = day of year - product code - nth set of that product that day.
 -- Day 259 is 2026-09-16 and day 263 is 2026-09-20, the "today" of this data:
 -- its batches are the ones still in progress.
+--
+-- Batch reference = the WR-YYYYMMDD-NN that factory intake gives each passing
+-- bowser: arrival date, then the day's sequence. Each batch here has its own
+-- dispatch, and bowsers arrive in dispatch order, so the sequence is the
+-- dispatch note's: DN-20260919-02 became WR-20260919-02. The four batches whose
+-- lookup did not resolve have none, because the lookup is where it comes from.
 --
 -- How it is built: one row per batch in seed_batch holds its checkpoint times
 -- and readings, one row per consignment in seed_consignment its sources. Every
@@ -73,6 +83,10 @@ CREATE TEMPORARY TABLE seed_batch (
     SnapshotStatus   varchar(20) NOT NULL DEFAULT 'Resolved',
     SnapshotAttempts int NOT NULL DEFAULT 1,
     SnapshotFailure  varchar(500) NULL,
+    BatchReference   varchar(50)
+        AS (IF(SnapshotStatus = 'Resolved',
+               CONCAT('WR-', DATE_FORMAT(IntakeAt, '%Y%m%d'), '-', RIGHT(DispatchRef, 2)),
+               NULL)) STORED,
     ProductLine      varchar(10)
         AS (SUBSTRING_INDEX(SUBSTRING_INDEX(BatchId, '-', 2), '-', -1)) STORED,
     ProductionDate   date
@@ -83,10 +97,12 @@ CREATE TEMPORARY TABLE seed_consignment (
     BatchId      varchar(50) NOT NULL,
     Society      varchar(10) NOT NULL,
     VolumeLitres int NOT NULL,
-    -- The society's quality panel at the MCC; filled in below.
+    -- When it was registered at the MCC gate, and its quality panel there; filled in below.
+    RegisteredAt datetime NULL,
     Fat          decimal(4,2) NULL,
     Snf          decimal(4,2) NULL,
     Clr          decimal(4,2) NULL,
+    Temp         decimal(4,2) NULL,
     PRIMARY KEY (BatchId, Society)
 );
 
@@ -197,6 +213,8 @@ VALUES
      '2026-09-20 05:45', '2026-09-20 08:10', '2026-09-20 09:55', NULL,
      4.06, 8.67, 28.15, 3.80, 4.60, 73.70, NULL, NULL),
     -- Left MCC at 4.6C: an early warning on a batch that has not failed anything yet.
+    -- Stopped at intake: its upstream lookup resolved, so MCC and Factory Intake are
+    -- Recorded, and Processing and Lab are NotYetReached.
     ('263-SY-A',  'DN-20260920-03', 'Processing',
      '2026-09-20 06:10', '2026-09-20 08:35', NULL, NULL,
      4.16, 8.73, 28.40, 4.60, 4.90, NULL, NULL, NULL),
@@ -263,11 +281,15 @@ VALUES
 
 -- Each society's panel is the batch's MCC reading moved by a small offset that
 -- depends on the society, so the blend is close to what each society delivered.
+-- Consignments are registered 35-45 minutes before the bowser leaves, and arrive
+-- at the gate at 5.0-6.5C, before chilling.
 UPDATE seed_consignment c
 JOIN seed_batch b ON b.BatchId = c.BatchId
-SET c.Fat = b.Fat + (CAST(SUBSTRING(c.Society, 3) AS SIGNED) % 5 - 2) * 0.04,
-    c.Snf = b.Snf + (CAST(SUBSTRING(c.Society, 3) AS SIGNED) % 3 - 1) * 0.03,
-    c.Clr = b.Clr + (CAST(SUBSTRING(c.Society, 3) AS SIGNED) % 3 - 1) * 0.10;
+SET c.RegisteredAt = b.MccAt - INTERVAL (45 - CAST(SUBSTRING(c.Society, 3) AS SIGNED) % 3 * 5) MINUTE,
+    c.Fat  = b.Fat + (CAST(SUBSTRING(c.Society, 3) AS SIGNED) % 5 - 2) * 0.04,
+    c.Snf  = b.Snf + (CAST(SUBSTRING(c.Society, 3) AS SIGNED) % 3 - 1) * 0.03,
+    c.Clr  = b.Clr + (CAST(SUBSTRING(c.Society, 3) AS SIGNED) % 3 - 1) * 0.10,
+    c.Temp = 5.00 + CAST(SUBSTRING(c.Society, 3) AS SIGNED) % 4 * 0.50;
 
 START TRANSACTION;
 
@@ -286,8 +308,9 @@ WHERE (Facility, Date, ProductLine) IN (SELECT Facility, ProductionDate, Product
 -- Complete once the Lab has reported and the upstream snapshot is resolved.
 
 INSERT INTO batch_records
-    (BatchId, DispatchRef, ProductLine, Facility, Status, Completeness, FirstEventAt, LastEventAt)
-SELECT b.BatchId, b.DispatchRef, b.ProductLine, b.Facility, b.Status,
+    (BatchId, DispatchRef, BatchReference, ProductLine, Facility, Status, Completeness,
+     FirstEventAt, LastEventAt)
+SELECT b.BatchId, b.DispatchRef, b.BatchReference, b.ProductLine, b.Facility, b.Status,
        IF(b.LabAt IS NOT NULL AND b.SnapshotStatus = 'Resolved', 'Complete', 'Partial'),
        b.MccAt,
        COALESCE(b.LabAt, b.ProcessingAt, b.IntakeAt, b.MccAt)
@@ -296,13 +319,19 @@ FROM seed_batch b;
 -- ---------------------------------------------------------------------------
 -- Upstream snapshots
 -- ---------------------------------------------------------------------------
--- One per batch. When resolved, Payload is the whole tree the MCC and Intake
--- Service returned:
---   dispatchNote { number, dispatchedAt }
---   tanks[]      { tankCode, quantityDrawnLitres,
---                  consignments[] { reference, society, volumeLitres,
---                                   panel { fatPercentage, snfPercentage, clrReading } } }
--- Here a society's milk goes to tank T1 or T2 by whether its number is odd.
+-- One per batch. When resolved, Payload is the contract in docs/schema.md
+-- (UpstreamSnapshotPayload), which the batch record endpoint reads for its MCC and
+-- Factory Intake sections and its links:
+--   batchReference
+--   dispatch { reference, dispatchedAt, dispatchedBy, bowserRegistration, totalLitres }
+--   intake   { arrivedAt, screenedAt, screenedBy, temperatureC }
+--   tanks[]  { code, quantityDrawnLitres,
+--              consignments[] { reference, society { code }, volumeLitres,
+--                               registeredAt, registeredBy,
+--                               panel { fatPercentage, snfPercentage, clrReading,
+--                                       temperatureC, verdict } } }
+-- Here a society's milk goes to tank T1 or T2 by whether its number is odd, and
+-- the dispatch total is everything drawn from both.
 
 INSERT INTO upstream_snapshots
     (BatchId, ResolutionStatus, Payload, AttemptCount, LastAttemptAt, ResolvedAt, FailureReason)
@@ -310,9 +339,18 @@ SELECT b.BatchId,
        b.SnapshotStatus,
        IF(b.SnapshotStatus = 'Resolved',
           JSON_OBJECT(
-              'dispatchNote', JSON_OBJECT(
-                  'number', b.DispatchRef,
-                  'dispatchedAt', DATE_FORMAT(b.MccAt, '%Y-%m-%dT%H:%i:%sZ')),
+              'batchReference', b.BatchReference,
+              'dispatch', JSON_OBJECT(
+                  'reference', b.DispatchRef,
+                  'dispatchedAt', DATE_FORMAT(b.MccAt, '%Y-%m-%dT%H:%i:%sZ'),
+                  'dispatchedBy', 'mcc.manager',
+                  'bowserRegistration', CONCAT('BWR-', RIGHT(b.DispatchRef, 2)),
+                  'totalLitres', t.TotalLitres),
+              'intake', JSON_OBJECT(
+                  'arrivedAt', DATE_FORMAT(b.IntakeAt, '%Y-%m-%dT%H:%i:%sZ'),
+                  'screenedAt', DATE_FORMAT(b.IntakeAt, '%Y-%m-%dT%H:%i:%sZ'),
+                  'screenedBy', 'intake.officer',
+                  'temperatureC', b.IntakeTemp),
               'tanks', t.Tanks),
           NULL),
        b.SnapshotAttempts,
@@ -322,8 +360,9 @@ SELECT b.BatchId,
 FROM seed_batch b
 LEFT JOIN (
     SELECT tank.BatchId,
+           SUM(tank.Litres) AS TotalLitres,
            JSON_ARRAYAGG(JSON_OBJECT(
-               'tankCode', tank.TankCode,
+               'code', tank.TankCode,
                'quantityDrawnLitres', tank.Litres,
                'consignments', tank.Consignments)) AS Tanks
     FROM (
@@ -334,10 +373,13 @@ LEFT JOIN (
                    'reference', CONCAT('CON-',
                        DATE_FORMAT(MAKEDATE(2026, CAST(SUBSTRING_INDEX(c.BatchId, '-', 1) AS UNSIGNED)), '%Y%m%d'),
                        '-', c.Society),
-                   'society', c.Society,
+                   'society', JSON_OBJECT('code', c.Society),
                    'volumeLitres', c.VolumeLitres,
+                   'registeredAt', DATE_FORMAT(c.RegisteredAt, '%Y-%m-%dT%H:%i:%sZ'),
+                   'registeredBy', 'mcc.intake.officer',
                    'panel', JSON_OBJECT('fatPercentage', c.Fat, 'snfPercentage', c.Snf,
-                                        'clrReading', c.Clr))) AS Consignments
+                                        'clrReading', c.Clr, 'temperatureC', c.Temp,
+                                        'verdict', 'Accepted'))) AS Consignments
         FROM seed_consignment c
         GROUP BY c.BatchId, TankCode
     ) tank
@@ -353,6 +395,11 @@ LEFT JOIN (
 -- Processing the pasteuriser temperature, Lab the result, pH and the five
 -- sensory grades. Intake reads a little lower than MCC on composition, as the
 -- same milk measured again after transport.
+--
+-- The batch record endpoint does not show the Mcc and Intake events: its MCC and
+-- Factory Intake sections come from the upstream snapshot. They are here because
+-- the MCC and intake temperature deviations below are found in them, and every
+-- deviation has to point at a timeline event.
 --
 -- IsDeviation starts at 0 and is set from the deviations found below, so the
 -- flag and the deviation rows come from the same rules.
@@ -591,6 +638,13 @@ DROP TEMPORARY TABLE seed_batch, seed_consignment;
 --   WHERE BatchId = '262-FM-B'
 --   ORDER BY OccurredAt;
 --
+-- Lookup by factory batch reference. Expected: 262-FM-B. 20 batches have a
+-- reference; the 4 whose upstream lookup did not resolve have NULL.
+--
+--   SELECT BatchId, DispatchRef, Status
+--   FROM batch_records
+--   WHERE BatchReference = 'WR-20260919-02';
+--
 -- Forward trace: which batches did society VS014's milk reach? Expected: 6.
 -- The consignments are inside the snapshot's JSON, so this reads every resolved
 -- snapshot rather than an index.
@@ -599,6 +653,6 @@ DROP TEMPORARY TABLE seed_batch, seed_consignment;
 --   FROM upstream_snapshots s,
 --        JSON_TABLE(s.Payload, '$.tanks[*].consignments[*]'
 --            COLUMNS (reference varchar(100) PATH '$.reference',
---                     society   varchar(10)  PATH '$.society')) c
+--                     society   varchar(10)  PATH '$.society.code')) c
 --   WHERE c.society = 'VS014'
 --   ORDER BY s.BatchId;
