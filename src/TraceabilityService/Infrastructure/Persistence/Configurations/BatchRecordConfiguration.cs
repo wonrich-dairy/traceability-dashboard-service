@@ -62,6 +62,11 @@ public class BatchRecordConfiguration : IEntityTypeConfiguration<BatchRecord>
         builder.Property(b => b.FirstEventAt)
             .HasColumnType("datetime(6)");
 
+        // The societies panel takes the batches of one facility whose first event falls
+        // in a date window, then reads their snapshots. Without this, MySQL starts from
+        // every resolved snapshot instead.
+        builder.HasIndex(b => new { b.Facility, b.FirstEventAt });
+
         builder.Property(b => b.LastEventAt)
             .HasColumnType("datetime(6)");
 

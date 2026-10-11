@@ -29,8 +29,19 @@ public class DailyQualityAggregate
     public int OnHoldCount{get; set;}
 
     // All deviations for these batches. Broken down by reason in
-    // DailyReasonCodeAggregate.
+    // DailyReasonCodeAggregate, and by checkpoint below.
     public int DeviationCount{get; set;}
+
+    // The same deviations by the checkpoint that reported them; the four add up to
+    // DeviationCount. Kept here because deviation_records has no facility column, so
+    // counting them per request would mean joining it to batch_records every time.
+    public int MccDeviationCount{get; set;}
+
+    public int IntakeDeviationCount{get; set;}
+
+    public int ProcessingDeviationCount{get; set;}
+
+    public int LabDeviationCount{get; set;}
 
     public DateTime UpdatedAt{get; set;}
 }

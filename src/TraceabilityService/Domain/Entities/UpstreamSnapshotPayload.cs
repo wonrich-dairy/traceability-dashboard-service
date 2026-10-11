@@ -79,5 +79,13 @@ public sealed class UpstreamSnapshotPayload
         public required decimal ClrReading{get; set;}
         public required decimal TemperatureC{get; set;}
         public required string Verdict{get; set;}
+
+        // The MCC and Intake Service's margin scoring: how close the closest measure came to
+        // the limit that would have rejected it, as a fraction of that limit (0 = on it),
+        // and which measure that was, e.g. Snf. Null when it could not be scored; the
+        // service's -1 placeholder for that is not copied. The marginal societies panel
+        // ranks on these.
+        public decimal? TightestMargin{get; set;}
+        public string? TightestMeasure{get; set;}
     }
 }
