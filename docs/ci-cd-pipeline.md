@@ -69,6 +69,16 @@ NuGet packages, direct and transitive, in all three projects. High and Critical 
 
 JMeter against staging, p95 ≤ 2000 ms and errors ≤ 1%. A separate job, so a regression fails the run but never undoes the deployment. See [performance-testing.md](performance-testing.md).
 
+Around the load test the job does three things for the batch endpoints (`/api/batches`), which need data and a sign-in:
+
+| Step | What it does |
+|---|---|
+| Mint a test token | `scripts/mint-perf-token.py` signs a 30-minute token with the staging signing key, built like the Auth service builds one, with the `QualityControlOfficer` role. A stored token cannot work: Auth tokens last 60 minutes |
+| Seed performance data | Loads `perf/seed-batches.sql` (1,000 `PERF-` batches) into the staging database. It refuses to run if the database name contains `prod` |
+| Remove performance data | Runs `perf/reset-seed-batches.sql` after the test, **even when the test fails**, and prints how many `PERF-` batches are left (it should be 0) |
+
+Production is never seeded and never load tested.
+
 ### 5. Deploy to production (push to `main`, after approval)
 
 | Step | Purpose |
@@ -111,10 +121,13 @@ No credentials are in workflow files. Everything is a GitHub **environment** sec
 | `ACR_USERNAME` | Secret | ACR token scoped to the `traceability` repository | same |
 | `ACR_PASSWORD` | Secret | that token's password | same |
 | `APP_HOST` | Variable | staging App Service host, without `https://` | production host |
-| `DB_HOST` | Variable | | `wonrichmysql.mysql.database.azure.com` |
-| `DB_NAME` | Variable | | `traceability_prod` |
-| `DB_USER` | Variable | | `trc_app_prod` |
-| `DB_PASSWORD` | Secret | | that user's password |
+| `DB_HOST` | Variable | `wonrichmysql.mysql.database.azure.com` | `wonrichmysql.mysql.database.azure.com` |
+| `DB_NAME` | Variable | `traceability` | `traceability_prod` |
+| `DB_USER` | Variable | `trc_app` | `trc_app_prod` |
+| `DB_PASSWORD` | Secret | that user's password | that user's password |
+| `AUTH_SIGNING_KEY` | Secret | the same signing key as the Auth service and the staging app, for the load test token | |
+
+On staging the database settings are for the load test's seed and cleanup; on production they are for the migration step.
 
 Application settings (connection string, Kafka, CORS) are App Service settings, not pipeline secrets.
 
