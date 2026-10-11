@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Prometheus;
 using TraceabilityService.Api.Infrastructure;
@@ -33,6 +34,11 @@ builder.Services.AddDbContext<TraceabilityDbContext>(options =>
 
 // ── Read model queries ───────────────────────────────────────────────────────
 builder.Services.AddScoped<IBatchRecordService, BatchRecordService>();
+builder.Services.AddScoped<IDashboardService, DashboardService>();
+
+// "Today" for the dashboard is the date in Asia/Colombo.
+builder.Services.TryAddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<FactoryCalendar>();
 
 // ── Authentication and authorization (Auth Service tokens; deny anonymous by default) ──
 builder.Services.AddTraceabilityAuthentication(builder.Configuration);
