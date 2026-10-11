@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.IdentityModel.Tokens;
 using System.Security.Claims;
 using System.Text;
-using SRC.Authorization;
 
 namespace TraceabilityService.Api.Infrastructure
 {
@@ -19,10 +18,20 @@ namespace TraceabilityService.Api.Infrastructure
             var issuer = configuration["Auth:Issuer"] ?? "wonrich-auth";
             var audience = configuration["Auth:Audience"] ?? "wonrich-services";
             // No fallback: a default key in source would let anyone who reads the repo mint valid tokens
-            var signingKey = configuration["Auth:SigningKey"]
-                ?? throw new InvalidOperationException(
-                    "Auth:SigningKey not found. Set it with: " +
-                    "dotnet user-secrets set \"Auth:SigningKey\" \"<shared signing key>\"");
+            var signingKey = configuration["Auth:SigningKey"];
+            if (string.IsNullOrWhiteSpace(signingKey))
+            {
+                throw new InvalidOperationException(
+                    "Auth:SigningKey is not configured. "
+                    + "Set it in .env (Docker), user secrets (dotnet run) or App Service settings (Azure).");
+            }
+
+            if (Encoding.UTF8.GetByteCount(signingKey) < 32)
+            {
+                throw new InvalidOperationException(
+                    "Auth:SigningKey is too short. HS256 needs at least 32 bytes; "
+                    + "use the same signing key as the Auth Service.");
+            }
 
             services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 .AddJwtBearer(options =>
@@ -57,40 +66,8 @@ namespace TraceabilityService.Api.Infrastructure
 
             services.AddAuthorizationBuilder()
                 .SetDefaultPolicy(authenticatedUser)
-                .SetFallbackPolicy(authenticatedUser)
-                .AddPolicy("ManageUsers", policy =>
-                    policy.RequireRole(WonrichRoles.SystemAdministrator))
-                .AddPolicy("ProcessingTechnician", policy =>
-                    policy.RequireRole(WonrichRoles.ProcessingTechnician, WonrichRoles.SystemAdministrator, WonrichRoles.ProductionManager))
-                .AddPolicy("FactoryIntake", policy =>
-                    policy.RequireRole(WonrichRoles.FactoryIntakeOfficer, WonrichRoles.ProcessingTechnician, WonrichRoles.SystemAdministrator))
-                .AddPolicy("QualityAnalyst", policy =>
-                    policy.RequireRole(WonrichRoles.QualityAnalyst, WonrichRoles.SystemAdministrator));
+                .SetFallbackPolicy(authenticatedUser);
             return services;
-        }
-
-        public static IServiceCollection AddTraceabilityCors(this IServiceCollection services, IConfiguration configuration)
-        {
-            var origins = configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
-                          ?? ["http://localhost:5173", "http://127.0.0.1:5173"];
-
-            services.AddCors(options =>
-            {
-                options.AddPolicy("TraceabilityCors", policy =>
-                {
-                    policy.WithOrigins(origins)
-                          .AllowAnyHeader()
-                          .AllowAnyMethod()
-                          .AllowCredentials();
-                });
-            });
-
-            return services;
-        }
-
-        public static IApplicationBuilder UseTraceabilityCors(this IApplicationBuilder app)
-        {
-            return app.UseCors("TraceabilityCors");
         }
     }
 }
