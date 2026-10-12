@@ -36,6 +36,9 @@ builder.Services.AddDbContext<TraceabilityDbContext>(options =>
 builder.Services.AddScoped<IBatchRecordService, BatchRecordService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
 
+// ── Event handlers (one transaction per event) ───────────────────────────────
+builder.Services.AddScoped<BatchDeterminationHandler>();
+
 // "Today" for the dashboard is the date in Asia/Colombo.
 builder.Services.TryAddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<FactoryCalendar>();

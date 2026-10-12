@@ -236,6 +236,8 @@ One row per Quality Lab determination (SCRUM-131). Quality Lab never edits a det
 | `SupersededAt` | `datetime(6)` | Yes | The later determination's `DeterminedAt`. Null while this one is current |
 | `TimelineEventId` | `bigint` | | → `timeline_events.Id`, cascade delete. The timeline row the `BatchCleared` or `BatchFailed` event was recorded as. A failure's out-of-spec parameters are `deviation_records` rows on that same timeline row |
 
+A `BatchFailed` writes one `deviation_records` row per out-of-spec parameter, with the reason code for that parameter and bound (`FatPercent` below its minimum is `LOW_FAT`), and one more per listed reason code no parameter accounts for, such as `SENSORY_TASTE`. When the determination is superseded, its rows stay, but the aggregates stop counting them, so the dashboard reflects only current results.
+
 A batch's current determination is its row with `IsSuperseded = 0`. The database does not enforce that there is only one: the consumer must add a supersede's row and mark the row it names in the same transaction.
 
 | Index | Columns | Unique | Serves |
@@ -261,7 +263,7 @@ ORDER BY d.DeterminedAt;
 | Column | Type | Null | Notes |
 |---|---|---|---|
 | `Id` | `int` | | Auto-increment |
-| `Date` | `date` | | The production day the batch code refers to |
+| `Date` | `date` | | The production day the batch code refers to: its leading day of the year, e.g. `262` in `262-FM-B`, in the year nearest the batch's `FirstEventAt` (`FactoryCalendar.ProductionDay`). For 2026 batches that is the sample data's `MAKEDATE(2026, 262)` |
 | `ProductLine` | `varchar(10)` | | |
 | `Facility` | `varchar(50)` | | |
 | `BatchCount` | `int` | | Every batch. The four counts below add up to it |
@@ -269,7 +271,7 @@ ORDER BY d.DeterminedAt;
 | `ClearedCount` | `int` | | `Status = Cleared` |
 | `FailedCount` | `int` | | `Status = Failed` |
 | `OnHoldCount` | `int` | | `Status = OnHold` |
-| `DeviationCount` | `int` | | All `deviation_records` rows for these batches. Broken down by reason in `daily_reason_code_aggregates`, and by checkpoint in the four columns below |
+| `DeviationCount` | `int` | | All `deviation_records` rows for these batches, except those of a superseded lab determination: they are kept as the batch's history but no longer counted. Broken down by reason in `daily_reason_code_aggregates`, and by checkpoint in the four columns below |
 | `MccDeviationCount` | `int` | | Deviations reported at the MCC |
 | `IntakeDeviationCount` | `int` | | Deviations reported at factory intake |
 | `ProcessingDeviationCount` | `int` | | Deviations reported during processing |
@@ -350,7 +352,7 @@ Upstream relays deliver at least once, so the same event can arrive twice. A con
 | `Cleared` | Quality Lab's `BatchCleared` | cleared |
 | `Failed` | Quality Lab's `BatchFailed` | failed |
 
-**Open question:** the team agreed that failed panels go on hold. Whether `BatchFailed` should move a batch to `Failed` or to `OnHold` is not settled yet. The schema supports either; the consumer decides.
+The SCRUM-131 consumer moves a batch to `Failed` on `BatchFailed`, as its Definition of Done specifies. The team had also discussed putting failed panels on hold; the schema supports either, and the change would be one line in `DeterminationResolver`.
 
 ### Determination result
 
@@ -400,6 +402,8 @@ Upstream relays deliver at least once, so the same event can arrive twice. A con
 | `Unspecified` | Only in `daily_reason_code_aggregates`: deviations whose event gave no reason | none |
 
 The list is provisional and has not been agreed with the upstream services.
+
+Lab deviations use Quality Lab's reason codes exactly as it sends them, e.g. `LOW_FAT`, `HIGH_PH`, `LOW_SNF`, `SENSORY_TASTE`, `CONTAMINATION`, so they are not in the list above. An unfamiliar code is stored and counted under its own name. A lab parameter with no known code is counted as `Unspecified`.
 
 ---
 

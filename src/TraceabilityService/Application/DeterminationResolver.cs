@@ -110,9 +110,11 @@ public enum StatusBucket
 }
 
 /// <summary>
-/// What the resolver needs to know about one determination. The consumer builds these
-/// from the batch's lab_determinations rows, with their reason codes from the deviation
-/// rows on the same timeline event, and from the incoming event.
+/// What the resolver needs to know about one determination. ReasonCodes has one entry per
+/// lab deviation the determination produces, with the code it is counted under
+/// (<see cref="LabDeviation.AggregateReasonCode"/>), so the aggregates always match the
+/// deviation_records rows. The handler builds these from the batch's lab_determinations
+/// rows with their deviation rows, and from the incoming event via <see cref="LabDeviations"/>.
 /// </summary>
 public sealed record DeterminationFacts(
     Guid DeterminationId,
@@ -165,8 +167,8 @@ public sealed record AggregateChanges(
         0,
         new Dictionary<string, int>(StringComparer.Ordinal));
 
-    // Each reason code on a failed determination is one lab deviation. Codes are counted
-    // exactly as Quality Lab sent them, so an unfamiliar one is counted under its own name.
+    // Each entry is one lab deviation, counted under its code exactly as given, so an
+    // unfamiliar code is counted under its own name.
     internal static AggregateChanges Between(
         StatusBucket from, IReadOnlyList<string> removedReasons,
         StatusBucket to, IReadOnlyList<string> addedReasons)
