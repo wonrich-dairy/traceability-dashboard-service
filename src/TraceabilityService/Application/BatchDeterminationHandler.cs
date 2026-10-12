@@ -4,6 +4,7 @@ using MySqlConnector;
 using Wonrich.QualityLab.Contracts.Events;
 using TraceabilityService.Api.Infrastructure.Persistence;
 using TraceabilityService.Domain.Entities;
+using TraceabilityService.Infrastructure.Kafka;
 
 namespace TraceabilityService.Application;
 
@@ -24,6 +25,12 @@ public enum BatchDeterminationOutcome
     Ignored
 }
 
+/// <summary>Applies one lab determination message; see <see cref="BatchDeterminationHandler"/>.</summary>
+public interface IBatchDeterminationHandler
+{
+    Task<BatchDeterminationOutcome> HandleAsync(BatchDeterminationMessage message, CancellationToken cancellationToken = default);
+}
+
 /// <summary>
 /// Applies one Quality Lab determination to the read model in a single transaction
 /// (SCRUM-131): the lab_determinations row (and the one it supersedes), a Lab timeline
@@ -31,14 +38,16 @@ public enum BatchDeterminationOutcome
 /// both daily aggregate tables. What the determination does is decided by
 /// <see cref="DeterminationResolver"/>; this class only reads and writes.
 /// </summary>
-public class BatchDeterminationHandler(TraceabilityDbContext db, TimeProvider time)
+public class BatchDeterminationHandler(
+    TraceabilityDbContext db, TimeProvider time, BatchDeterminationConsumerOptions options) : IBatchDeterminationHandler
 {
-    public const string ConsumerGroup = "traceability-batch-determinations";
-
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     private readonly TraceabilityDbContext _db = db;
     private readonly TimeProvider _time = time;
+
+    // processed_messages is per consumer group, so this is the group the consumer reads as.
+    private readonly string _consumerGroup = options.ConsumerGroup;
 
     /// <exception cref="BatchNotFoundException">
     /// The batch is not here yet. Nothing is written, so a retry starts clean.
@@ -185,7 +194,7 @@ public class BatchDeterminationHandler(TraceabilityDbContext db, TimeProvider ti
     {
         _db.ProcessedMessages.Add(new ProcessedMessage
         {
-            ConsumerGroup = ConsumerGroup,
+            ConsumerGroup = _consumerGroup,
             SourceEventId = eventId,
             Topic = topic,
             ProcessedAt = now,

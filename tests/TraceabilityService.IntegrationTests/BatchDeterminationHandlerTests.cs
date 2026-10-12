@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using TraceabilityService.Api.Infrastructure.Persistence;
 using TraceabilityService.Application;
 using TraceabilityService.Domain.Entities;
+using TraceabilityService.Infrastructure.Kafka;
 using Wonrich.QualityLab.Contracts.Events;
 
 namespace TraceabilityService.IntegrationTests;
@@ -176,7 +177,7 @@ public class BatchDeterminationHandlerTests(TraceabilityApiFactory factory)
     private async Task<BatchDeterminationOutcome> HandleAsync(BatchDeterminationEventBase determination)
     {
         using var scope = factory.Services.CreateScope();
-        var handler = scope.ServiceProvider.GetRequiredService<BatchDeterminationHandler>();
+        var handler = scope.ServiceProvider.GetRequiredService<IBatchDeterminationHandler>();
         var payload = JsonSerializer.Serialize(determination, determination.GetType(), Json);
         return await handler.HandleAsync(new BatchDeterminationMessage(Topic, determination.EventType, payload));
     }
@@ -299,6 +300,8 @@ public class BatchDeterminationHandlerTests(TraceabilityApiFactory factory)
             using var scope = factory.Services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<TraceabilityDbContext>();
 
+            var consumerGroup = scope.ServiceProvider.GetRequiredService<BatchDeterminationConsumerOptions>().ConsumerGroup;
+
             var labEvents = await db.TimelineEvents.AsNoTracking()
                 .Where(e => e.BatchId == BatchId && e.Checkpoint == Checkpoint.Lab)
                 .ToListAsync();
@@ -318,7 +321,7 @@ public class BatchDeterminationHandlerTests(TraceabilityApiFactory factory)
                     .Where(a => a.Facility == facility && a.Date == ProductionDay)
                     .ToDictionaryAsync(a => a.ReasonCode, a => a.DeviationCount),
                 [.. await db.ProcessedMessages.AsNoTracking()
-                    .Where(m => m.ConsumerGroup == BatchDeterminationHandler.ConsumerGroup && eventIds.Contains(m.SourceEventId))
+                    .Where(m => m.ConsumerGroup == consumerGroup && eventIds.Contains(m.SourceEventId))
                     .Select(m => m.SourceEventId)
                     .ToListAsync()]);
         }

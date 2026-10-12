@@ -34,6 +34,8 @@ public class TraceabilityApiFactory : WebApplicationFactory<Program>, IAsyncLife
                 ["ConnectionStrings:TraceabilityDb"] = _mysql.GetConnectionString(),
                 // No broker in CI: the Kafka check reports Degraded, which is expected.
                 ["Kafka:BootstrapServers"] = "localhost:1",
+                // Nor should the consumers try to read from it; the handlers are tested directly.
+                ["Kafka:Consumers:Enabled"] = "false",
                 ["Auth:SigningKey"] = SigningKey,
                 ["Auth:Issuer"] = Issuer,
                 ["Auth:Audience"] = Audience,
