@@ -1,3 +1,4 @@
+using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using MySqlConnector;
@@ -31,7 +32,9 @@ public sealed class EfEventUnitOfWork(TraceabilityDbContext db, TimeProvider tim
 
     public async Task<bool> BeginAsync(string consumerGroup, ConsumedEvent consumed, CancellationToken cancellationToken)
     {
-        _transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        // READ COMMITTED: a handler that waits for a batch's row lock then reads what the other
+        // consumer committed meanwhile (see BatchLocks), and no gap locks are taken.
+        _transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
 
         db.ProcessedMessages.Add(new ProcessedMessage
         {

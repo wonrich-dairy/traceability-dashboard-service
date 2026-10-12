@@ -19,7 +19,7 @@ public static class ProcessingConsumers
 
     public static IServiceCollection AddProcessingConsumers(this IServiceCollection services, IConfiguration configuration)
     {
-        services.TryAddScoped<AggregateWriter>();
+        services.TryAddScoped<IAggregateWriter, AggregateWriter>();
         services.TryAddScoped<ProcessingEventApplier>();
 
         services.AddEventConsumer(
@@ -27,22 +27,26 @@ public static class ProcessingConsumers
                 topic: "wonrich.processing.stage-events.v1",
                 consumerGroup: "traceability-stage-events",
                 deadLetterTopic: "wonrich.dlq.traceability-stage-events.v1"),
-            handlers => handlers
-                .Add<ProcessingEventHandler<MilkAllocatedToMixingTankEvent>>(nameof(MilkAllocatedToMixingTankEvent))
-                .Add<ProcessingEventHandler<ProcessingStageRecordedEvent>>(nameof(ProcessingStageRecordedEvent))
-                .Add<ProcessingEventHandler<ProcessingCompletedEvent>>(nameof(ProcessingCompletedEvent)));
+            StageHandlers);
 
         services.AddEventConsumer(
             KafkaConsumerOptions.From(configuration, HoldEvents,
                 topic: "wonrich.processing.hold-events.v1",
                 consumerGroup: "traceability-hold-events",
                 deadLetterTopic: "wonrich.dlq.traceability-hold-events.v1"),
-            handlers => handlers
-                .Add<ProcessingEventHandler<ProcessingHoldRaisedEvent>>(nameof(ProcessingHoldRaisedEvent))
-                .Add<ProcessingEventHandler<ProcessingHoldResolvedEvent>>(nameof(ProcessingHoldResolvedEvent)));
+            HoldHandlers);
 
         return services;
     }
+
+    public static void StageHandlers(EventHandlerMap handlers) => handlers
+        .Add<ProcessingEventHandler<MilkAllocatedToMixingTankEvent>>(nameof(MilkAllocatedToMixingTankEvent))
+        .Add<ProcessingEventHandler<ProcessingStageRecordedEvent>>(nameof(ProcessingStageRecordedEvent))
+        .Add<ProcessingEventHandler<ProcessingCompletedEvent>>(nameof(ProcessingCompletedEvent));
+
+    public static void HoldHandlers(EventHandlerMap handlers) => handlers
+        .Add<ProcessingEventHandler<ProcessingHoldRaisedEvent>>(nameof(ProcessingHoldRaisedEvent))
+        .Add<ProcessingEventHandler<ProcessingHoldResolvedEvent>>(nameof(ProcessingHoldResolvedEvent));
 }
 
 /// <summary>Deserialises one Processing event type and hands it to <see cref="ProcessingEventApplier"/>.</summary>
@@ -62,7 +66,7 @@ public sealed class ProcessingEventHandler<TEvent>(ProcessingEventApplier applie
 /// </summary>
 public sealed class ProcessingEventApplier(
     TraceabilityDbContext db,
-    AggregateWriter aggregates,
+    IAggregateWriter aggregates,
     TimeProvider time,
     IConfiguration configuration,
     ILogger<ProcessingEventApplier> logger)
@@ -92,6 +96,7 @@ public sealed class ProcessingEventApplier(
             return;
         }
 
+        await db.LockBatchAsync(processingEvent.BatchId, cancellationToken);
         var batch = await db.BatchRecords
             .Include(b => b.UpstreamSnapshot)
             .SingleOrDefaultAsync(b => b.BatchId == processingEvent.BatchId, cancellationToken);
@@ -115,6 +120,7 @@ public sealed class ProcessingEventApplier(
     {
         // One dispatch can be split across batches; an event can be on one timeline only
         // (SourceEventId is unique), so it goes to the first batch made from the dispatch.
+        await db.LockDispatchAsync(processingEvent.DispatchNumber, cancellationToken);
         var batch = await db.BatchRecords
             .Include(b => b.UpstreamSnapshot)
             .Where(b => b.DispatchRef == processingEvent.DispatchNumber)

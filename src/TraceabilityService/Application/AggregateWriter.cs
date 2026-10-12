@@ -33,13 +33,18 @@ public sealed record AggregateDelta
     }
 }
 
+/// <summary>Applies an <see cref="AggregateDelta"/> to both aggregate tables, inside the caller's transaction.</summary>
+public interface IAggregateWriter
+{
+    Task ApplyAsync(BatchRecord batch, DateOnly day, AggregateDelta delta, DateTime now, CancellationToken cancellationToken);
+}
+
 /// <summary>
-/// Applies an <see cref="AggregateDelta"/> to both aggregate tables, inside the caller's
-/// transaction. INSERT ... ON DUPLICATE KEY UPDATE adds to the row atomically, so consumers on
+/// <see cref="IAggregateWriter"/> for MySQL. INSERT ... ON DUPLICATE KEY UPDATE adds to the row atomically, so consumers on
 /// other partitions updating the same day cannot lose each other's changes, and a missing row
 /// is created.
 /// </summary>
-public sealed class AggregateWriter(TraceabilityDbContext db)
+public sealed class AggregateWriter(TraceabilityDbContext db) : IAggregateWriter
 {
     public async Task ApplyAsync(
         BatchRecord batch, DateOnly day, AggregateDelta delta, DateTime now, CancellationToken cancellationToken)

@@ -17,7 +17,7 @@ public static class LabDeterminationConsumer
 
     public static IServiceCollection AddLabDeterminationConsumer(this IServiceCollection services, IConfiguration configuration)
     {
-        services.TryAddScoped<AggregateWriter>();
+        services.TryAddScoped<IAggregateWriter, AggregateWriter>();
         return services.AddEventConsumer(
             KafkaConsumerOptions.From(configuration, Name,
                 topic: "wonrich.quality-lab.batch-determinations.v1",
@@ -38,7 +38,7 @@ public static class LabDeterminationConsumer
 /// <see cref="DeterminationResolver"/>; this class only reads and writes.
 /// </summary>
 public sealed class LabDeterminationHandler<TEvent>(
-    TraceabilityDbContext db, AggregateWriter aggregates, TimeProvider time, ILogger<LabDeterminationHandler<TEvent>> logger)
+    TraceabilityDbContext db, IAggregateWriter aggregates, TimeProvider time, ILogger<LabDeterminationHandler<TEvent>> logger)
     : TypedEventHandler<TEvent> where TEvent : BatchDeterminationEventBase
 {
     private readonly TraceabilityDbContext _db = db;
@@ -51,6 +51,7 @@ public sealed class LabDeterminationHandler<TEvent>(
     {
         var now = _time.GetUtcNow().UtcDateTime;
 
+        await _db.LockBatchAsync(determination.BatchId, cancellationToken);
         var batch = await _db.BatchRecords
             .Include(b => b.UpstreamSnapshot)
             .SingleOrDefaultAsync(b => b.BatchId == determination.BatchId, cancellationToken)
