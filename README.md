@@ -118,30 +118,39 @@ Kafka is then reached at `localhost:29092`, the default in `appsettings.json`.
 | `Kafka:SaslMechanism` | `Kafka__SaslMechanism` | `KAFKA_SASL_MECHANISM` | `Plain` on Azure |
 | `Kafka:SaslUsername` | `Kafka__SaslUsername` | `KAFKA_SASL_USERNAME` | Broker user |
 | `Kafka:SaslPassword` | `Kafka__SaslPassword` | `KAFKA_SASL_PASSWORD` | Broker password (secret) |
+| `Kafka:Topics:StageEvents` | `Kafka__Topics__StageEvents` | | Processing's stage events, default `wonrich.processing.stage-events.v1`. Also the topic the Kafka health check looks for |
+| `Kafka:Topics:StageEventsDeadLetter` | `Kafka__Topics__StageEventsDeadLetter` | | Where stage events that cannot be applied are parked, default `wonrich.dlq.traceability-stage-events.v1` |
+| `Kafka:ConsumerGroups:StageEvents` | `Kafka__ConsumerGroups__StageEvents` | | Consumer group for the stage events, default `traceability-stage-events` |
+| `Kafka:Topics:HoldEvents` | `Kafka__Topics__HoldEvents` | | Processing's hold events, default `wonrich.processing.hold-events.v1` |
+| `Kafka:Topics:HoldEventsDeadLetter` | `Kafka__Topics__HoldEventsDeadLetter` | | Where hold events that cannot be applied are parked, default `wonrich.dlq.traceability-hold-events.v1` |
+| `Kafka:ConsumerGroups:HoldEvents` | `Kafka__ConsumerGroups__HoldEvents` | | Consumer group for the hold events, default `traceability-hold-events` |
 | `Kafka:Topics:BatchDeterminations` | `Kafka__Topics__BatchDeterminations` | | Quality Lab's determinations, default `wonrich.quality-lab.batch-determinations.v1` |
 | `Kafka:Topics:BatchDeterminationsDeadLetter` | `Kafka__Topics__BatchDeterminationsDeadLetter` | | Where determinations that cannot be applied are parked, default `wonrich.dlq.traceability-batch-determinations.v1` |
-| `Kafka:ConsumerGroups:BatchDeterminations` | `Kafka__ConsumerGroups__BatchDeterminations` | | Consumer group for the determinations, default `traceability-batch-determinations`. Also the group `processed_messages` records them under |
-| `Kafka:Consumers:Enabled` | `Kafka__Consumers__Enabled` | | `false` stops the consumers from starting (the integration tests set it). Default `true` |
+| `Kafka:ConsumerGroups:BatchDeterminations` | `Kafka__ConsumerGroups__BatchDeterminations` | | Consumer group for the determinations, default `traceability-batch-determinations` |
+| `Kafka:Consumers:Enabled` | `Kafka__Consumers__Enabled` | | `false` stops all consumers from starting (the integration tests set it). Default `true` |
+| `Traceability:FactoryFacility` | `Traceability__FactoryFacility` | | The facility batches created from Processing's events get, since those events carry none. Must match the `facility` claim of the factory's users. Default `FACTORY-01` |
 | `MccIntake:BaseUrl` | `MccIntake__BaseUrl` | `MCC_INTAKE_BASE_URL` | MCC and Intake Service base URL (SCRUM-12) |
 | `MccIntake:ClientId` | `MccIntake__ClientId` | `MCC_INTAKE_CLIENT_ID` | Service-to-service client ID |
 | `MccIntake:ClientSecret` | `MccIntake__ClientSecret` | `MCC_INTAKE_CLIENT_SECRET` | Service-to-service secret |
 | `Cors:AllowedOrigins` | `Cors__AllowedOrigins__0`, `__1`, ... | `CORS_ORIGIN` | Frontend origins allowed to call the API |
 
-The topic, dead-letter topic and consumer group are registered in `wonrich-infra` (`kafka/topics.env`, `docs/kafka.md`; SCRUM-126). The brokers do not create topics on first use, so change them there first.
+Each consumer's group is also the group its events are recorded under in `processed_messages`. The topics, dead-letter topics and consumer groups are registered in `wonrich-infra` (`kafka/topics.env`, `docs/kafka.md`; SCRUM-126). The brokers do not create topics on first use, so change them there first. Never reuse another service's group, e.g. Processing's `processing-stage-events`: consumers in one group share the messages, so each service would see only some of them.
 
 ### Kafka consumers
 
 Every consumer runs on the same base (`Infrastructure/Kafka`): `KafkaEventConsumer` reads the topic as the consumer's group, and `EventProcessor` sends each event, by its `eventType` header, to the handler registered for that type. The handler runs in one database transaction together with the event's `processed_messages` row, so an event read twice is recognised and skipped. The offset is committed only after the transaction commits or the message is dead-lettered, so nothing is skipped. Every log line written while an event is handled carries its `x-correlation-id` as `CorrelationId`, with its `EventId` and `EventType`.
 
-| Consumer | Topic | Handlers |
-|---|---|---|
-| Lab determinations (SCRUM-131) | `wonrich.quality-lab.batch-determinations.v1` | `BatchCleared`, `BatchFailed`: `LabDeterminationHandler` |
+| Consumer | Topic | Group | Dead-letter topic | Handlers (`eventType` header) |
+|---|---|---|---|---|
+| Stage events (SCRUM-130) | `wonrich.processing.stage-events.v1` | `traceability-stage-events` | `wonrich.dlq.traceability-stage-events.v1` | `MilkAllocatedToMixingTankEvent`, `ProcessingStageRecordedEvent`, `ProcessingCompletedEvent`: `ProcessingEventHandler` |
+| Hold events (SCRUM-130) | `wonrich.processing.hold-events.v1` | `traceability-hold-events` | `wonrich.dlq.traceability-hold-events.v1` | `ProcessingHoldRaisedEvent`, `ProcessingHoldResolvedEvent`: `ProcessingEventHandler` |
+| Lab determinations (SCRUM-131) | `wonrich.quality-lab.batch-determinations.v1` | `traceability-batch-determinations` | `wonrich.dlq.traceability-batch-determinations.v1` | `BatchCleared`, `BatchFailed`: `LabDeterminationHandler` |
 
-To add one, register it with `services.AddEventConsumer(options, handlers => handlers.Add<THandler>("EventType"))`; see `LabDeterminationConsumer`.
+The Processing consumers create a batch on its first event. A hold raised before allocation carries the dispatch number instead of a batch code; it is kept in `pending_dispatch_events` until a batch from that dispatch arrives. To add a consumer, register it with `services.AddEventConsumer(options, handlers => handlers.Add<THandler>("EventType"))`; see `ProcessingConsumers` and `LabDeterminationConsumer`.
 
 | Failure | What happens |
 |---|---|
-| Transient, e.g. the database, or the batch not created yet by SCRUM-130 | Retried 3 times, after 1 s, 2 s and 4 s, then dead-lettered |
+| Transient, e.g. the database, or a lab determination for a batch whose Processing events have not arrived yet | Retried 3 times, after 1 s, 2 s and 4 s, then dead-lettered |
 | An event type with no handler on that consumer | Retried the same way, then dead-lettered, so it can be replayed once a handler exists |
 | Can never succeed: no value or event ID, the body is not valid JSON or not the contract's shape, or the batch code has no day of the year | Dead-lettered at once |
 | The dead-letter publish fails too | Not committed: the message is read again after 5 s, so it is never lost |
