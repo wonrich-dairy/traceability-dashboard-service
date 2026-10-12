@@ -16,4 +16,17 @@ public class BatchSummaryDto
     public TraceCompleteness Completeness{get; set;}
     public DateTime FirstEventAt{get; set;}
     public DateTime LastEventAt{get; set;}
+
+    // The batch's current lab determination: Pending until Quality Lab has made one.
+    public LabResult LabResult{get; set;}
+}
+
+public enum LabResult
+{
+    // No current determination yet.
+    Pending,
+
+    Cleared,
+
+    Failed
 }

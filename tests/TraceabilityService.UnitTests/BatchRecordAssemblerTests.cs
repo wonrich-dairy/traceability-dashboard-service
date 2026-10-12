@@ -116,7 +116,7 @@ public class BatchRecordAssemblerTests
     [Fact]
     public void Not_found_no_batch_gives_no_record()
     {
-        Assert.Null(BatchRecordAssembler.Assemble(null, [], null, []));
+        Assert.Null(BatchRecordAssembler.Assemble(null, [], null, [], []));
     }
 
     // A batch only exists once it has passed factory intake, so MCC and Intake without data
@@ -188,11 +188,45 @@ public class BatchRecordAssemblerTests
         Assert.Equal(CheckpointState.NoDataReceived, Section(record, Checkpoint.Mcc).State);
     }
 
+    [Fact]
+    public void A_batch_with_no_determination_reports_its_lab_result_as_pending()
+    {
+        var record = Assemble(BatchStatus.AwaitingLab, [], ResolvedSnapshot(), []);
+
+        Assert.NotNull(record);
+        Assert.Equal(LabResult.Pending, record.LabResult);
+    }
+
+    [Fact]
+    public void The_lab_result_is_the_active_determinations_not_a_superseded_ones()
+    {
+        var record = Assemble(BatchStatus.Cleared, [], ResolvedSnapshot(), [],
+        [
+            // Superseded, yet newer: Quality Lab's clocks can disagree by a second.
+            Determination(DeterminationResult.Failed, Dispatched.AddHours(6).AddSeconds(1), superseded: true),
+            Determination(DeterminationResult.Cleared, Dispatched.AddHours(6), superseded: false),
+        ]);
+
+        Assert.NotNull(record);
+        Assert.Equal(LabResult.Cleared, record.LabResult);
+    }
+
+    private static LabDetermination Determination(DeterminationResult result, DateTime at, bool superseded) => new()
+    {
+        DeterminationId = Guid.NewGuid(),
+        BatchId = "262-FM-B",
+        Result = result,
+        DeterminedAt = at,
+        DeterminedBy = "analyst-1",
+        IsSuperseded = superseded,
+    };
+
     private static BatchRecordDto? Assemble(
         BatchStatus status,
         IEnumerable<TimelineEvent> events,
         UpstreamSnapshot? snapshot,
-        IEnumerable<DeviationRecord> deviations) =>
+        IEnumerable<DeviationRecord> deviations,
+        IEnumerable<LabDetermination>? determinations = null) =>
         BatchRecordAssembler.Assemble(
             new BatchRecord
             {
@@ -206,7 +240,7 @@ public class BatchRecordAssemblerTests
                 FirstEventAt = Dispatched,
                 LastEventAt = Dispatched
             },
-            events, snapshot, deviations);
+            events, snapshot, deviations, determinations ?? []);
 
     private static CheckpointSectionDto Section(BatchRecordDto record, Checkpoint checkpoint) =>
         record.Checkpoints.Single(c => c.Checkpoint == checkpoint);

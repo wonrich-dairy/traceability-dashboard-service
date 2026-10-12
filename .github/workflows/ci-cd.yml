@@ -21,6 +21,9 @@ env:
   INTEGRATION_TEST_PROJECT: tests/TraceabilityService.IntegrationTests/TraceabilityService.IntegrationTests.csproj
   COVERAGE_THRESHOLD: "60"
   IMAGE_NAME: traceability
+  # Wonrich.QualityLab.Contracts restores from GitHub Packages (nuget.config). Jobs that restore or
+  # build the image need packages: read; the package must also grant this repository read access.
+  GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 jobs:
   # ── NuGet dependency audit (SCRUM-112) ──────────────────────────────────────
@@ -30,6 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      packages: read
     steps:
       - uses: actions/checkout@v4
 
@@ -57,6 +61,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      packages: read         # Wonrich.QualityLab.Contracts from GitHub Packages
       pull-requests: write   # coverage summary comment
       checks: write          # test results check (.trx)
       security-events: write # image scan results in the Security tab
@@ -159,7 +164,7 @@ jobs:
           path: artifacts/migrations.sql
 
       - name: Docker build (validation)
-        run: docker build -t ${{ env.IMAGE_NAME }}:ci .
+        run: docker build --secret id=github_packages_token,env=GITHUB_PACKAGES_TOKEN -t ${{ env.IMAGE_NAME }}:ci .
 
       # ── Container image scan (SCRUM-112) ────────────────────────────────────
       # The first pass reports every severity to the Security tab and never fails; the second is
@@ -198,6 +203,9 @@ jobs:
     environment:
       name: staging
       url: https://${{ vars.APP_HOST }}
+    permissions:
+      contents: read
+      packages: read   # docker build restores Wonrich.QualityLab.Contracts
     steps:
       - uses: actions/checkout@v4
 
@@ -223,6 +231,7 @@ jobs:
         run: |
           REPO=${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}
           docker build \
+            --secret id=github_packages_token,env=GITHUB_PACKAGES_TOKEN \
             --build-arg GIT_SHA=${{ github.sha }} \
             -t "$REPO:${{ github.sha }}" \
             -t "$REPO:latest" .

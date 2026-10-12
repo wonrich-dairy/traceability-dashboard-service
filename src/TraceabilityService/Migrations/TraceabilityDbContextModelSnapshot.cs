@@ -293,6 +293,62 @@ namespace TraceabilityService.Migrations
                     b.ToTable("deviation_records", (string)null);
                 });
 
+            modelBuilder.Entity("TraceabilityService.Domain.Entities.LabDetermination", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("BatchId")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<Guid>("DeterminationId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("DeterminedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("DeterminedBy")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<bool>("IsSuperseded")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Result")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<DateTime?>("SupersededAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("SupersedesDeterminationId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<long>("TimelineEventId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeterminationId")
+                        .IsUnique();
+
+                    b.HasIndex("SupersedesDeterminationId");
+
+                    b.HasIndex("TimelineEventId")
+                        .IsUnique();
+
+                    b.HasIndex("BatchId", "DeterminedAt");
+
+                    b.ToTable("lab_determinations", (string)null);
+                });
+
             modelBuilder.Entity("TraceabilityService.Domain.Entities.ProcessedMessage", b =>
                 {
                     b.Property<long>("Id")
@@ -444,6 +500,22 @@ namespace TraceabilityService.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("TraceabilityService.Domain.Entities.LabDetermination", b =>
+                {
+                    b.HasOne("TraceabilityService.Domain.Entities.BatchRecord", null)
+                        .WithMany("LabDeterminations")
+                        .HasForeignKey("BatchId")
+                        .HasPrincipalKey("BatchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("TraceabilityService.Domain.Entities.TimelineEvent", null)
+                        .WithMany()
+                        .HasForeignKey("TimelineEventId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("TraceabilityService.Domain.Entities.TimelineEvent", b =>
                 {
                     b.HasOne("TraceabilityService.Domain.Entities.BatchRecord", null)
@@ -467,6 +539,8 @@ namespace TraceabilityService.Migrations
             modelBuilder.Entity("TraceabilityService.Domain.Entities.BatchRecord", b =>
                 {
                     b.Navigation("Deviations");
+
+                    b.Navigation("LabDeterminations");
 
                     b.Navigation("TimelineEvents");
 

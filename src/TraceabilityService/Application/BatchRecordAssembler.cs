@@ -19,7 +19,8 @@ public static class BatchRecordAssembler
         BatchRecord? batch,
         IEnumerable<TimelineEvent> events,
         UpstreamSnapshot? snapshot,
-        IEnumerable<DeviationRecord> deviations)
+        IEnumerable<DeviationRecord> deviations,
+        IEnumerable<LabDetermination> determinations)
     {
         if (batch is null)
         {
@@ -57,6 +58,7 @@ public static class BatchRecordAssembler
             Completeness = batch.Completeness,
             FirstEventAt = batch.FirstEventAt,
             LastEventAt = batch.LastEventAt,
+            LabResult = LabResults.Of(determinations),
 
             Upstream = snapshot is null ? null : new UpstreamStatusDto
             {

@@ -2,9 +2,14 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
-# Restore first, from the project file only, so this layer is cached until dependencies change
+# Restore first, from the project file only, so this layer is cached until dependencies change.
+# Wonrich.QualityLab.Contracts comes from GitHub Packages: the token arrives as a build secret, which
+# is mounted for this one RUN and never written to a layer (a build arg would be baked into the image).
+COPY nuget.config ./
 COPY src/TraceabilityService/TraceabilityService.csproj src/TraceabilityService/
-RUN dotnet restore src/TraceabilityService/TraceabilityService.csproj
+RUN --mount=type=secret,id=github_packages_token,required=true \
+    GITHUB_PACKAGES_TOKEN="$(cat /run/secrets/github_packages_token)" \
+    dotnet restore src/TraceabilityService/TraceabilityService.csproj
 
 COPY src/ src/
 RUN dotnet publish src/TraceabilityService/TraceabilityService.csproj -c Release -o /app --no-restore

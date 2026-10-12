@@ -69,4 +69,7 @@ public class BatchRecord
     public UpstreamSnapshot? UpstreamSnapshot{get; set;}
 
     public ICollection<DeviationRecord> Deviations{get; set;} = [];
+
+    // Every lab determination, superseded ones included.
+    public ICollection<LabDetermination> LabDeterminations{get; set;} = [];
 }

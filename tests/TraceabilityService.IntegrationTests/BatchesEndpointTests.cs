@@ -43,6 +43,13 @@ public class BatchesEndpointTests(TraceabilityApiFactory factory) : IAsyncLifeti
         var mcc = Event("TEST-API-A", Checkpoint.Mcc, "MccDispatchCreated", At, """{"temperatureC": 12.40}""");
         db.TimelineEvents.AddRange(lab, mcc);
 
+        // C was failed by the lab, then cleared by a supersede: two Lab events, one determination each.
+        // The supersede carries the earlier time (Quality Lab instances with skewed clocks), so
+        // the active determination is not simply the newest one.
+        var failedLab = Event("TEST-API-C", Checkpoint.Lab, "BatchFailed", At.AddHours(7), """{"result": "Failed"}""");
+        var clearedLab = Event("TEST-API-C", Checkpoint.Lab, "BatchCleared", At.AddHours(7).AddSeconds(-1), """{"result": "Cleared"}""");
+        db.TimelineEvents.AddRange(failedLab, clearedLab);
+
         db.UpstreamSnapshots.Add(new UpstreamSnapshot
         {
             BatchId = "TEST-API-A",
@@ -77,6 +84,30 @@ public class BatchesEndpointTests(TraceabilityApiFactory factory) : IAsyncLifeti
                 Parameter = "PH",
                 ObservedValue = 6.32m,
                 Limit = 6.60m
+            });
+
+        var failed = Guid.NewGuid();
+        db.LabDeterminations.AddRange(
+            new LabDetermination
+            {
+                DeterminationId = failed,
+                BatchId = "TEST-API-C",
+                Result = DeterminationResult.Failed,
+                DeterminedAt = At.AddHours(7),
+                DeterminedBy = "analyst-1",
+                IsSuperseded = true,
+                SupersededAt = At.AddHours(7).AddSeconds(-1),
+                TimelineEventId = failedLab.Id
+            },
+            new LabDetermination
+            {
+                DeterminationId = Guid.NewGuid(),
+                BatchId = "TEST-API-C",
+                Result = DeterminationResult.Cleared,
+                DeterminedAt = At.AddHours(7).AddSeconds(-1),
+                DeterminedBy = "analyst-1",
+                SupersedesDeterminationId = failed,
+                TimelineEventId = clearedLab.Id
             });
         await db.SaveChangesAsync();
     }
@@ -152,6 +183,27 @@ public class BatchesEndpointTests(TraceabilityApiFactory factory) : IAsyncLifeti
             batch.GetProperty("checkpoints").EnumerateArray().Select(s => s.GetProperty("state").GetString()));
         Assert.Equal(JsonValueKind.Null, batch.GetProperty("upstream").ValueKind);
         Assert.Equal(JsonValueKind.Null, batch.GetProperty("links").ValueKind);
+    }
+
+    [Fact]
+    public async Task A_batch_with_no_determination_reports_its_lab_result_as_pending()
+    {
+        using var record = await GetJsonAsync("/api/batches/TEST-API-B");
+        Assert.Equal("Pending", record.RootElement.GetProperty("labResult").GetString());
+
+        using var list = await GetJsonAsync("/api/batches?dispatchRef=" + SharedDispatch);
+        var summary = list.RootElement.EnumerateArray().Single(b => b.GetProperty("batchId").GetString() == "TEST-API-B");
+        Assert.Equal("Pending", summary.GetProperty("labResult").GetString());
+    }
+
+    [Fact]
+    public async Task The_lab_result_comes_from_the_active_determination_not_a_superseded_one()
+    {
+        using var record = await GetJsonAsync("/api/batches/TEST-API-C");
+        Assert.Equal("Cleared", record.RootElement.GetProperty("labResult").GetString());
+
+        using var list = await GetJsonAsync("/api/batches?dispatchRef=DN-TEST-API-02");
+        Assert.Equal("Cleared", Assert.Single(list.RootElement.EnumerateArray()).GetProperty("labResult").GetString());
     }
 
     [Fact]
@@ -247,6 +299,13 @@ public class BatchesEndpointTests(TraceabilityApiFactory factory) : IAsyncLifeti
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         return [.. json.RootElement.EnumerateArray().Select(b => b.GetProperty("batchId").GetString())];
+    }
+
+    private async Task<JsonDocument> GetJsonAsync(string path)
+    {
+        var response = await AuthorizedClient().GetAsync(path);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        return JsonDocument.Parse(await response.Content.ReadAsStringAsync());
     }
 
     private HttpClient AuthorizedClient(string role = WonrichRoles.QualityControlOfficer)

@@ -46,6 +46,13 @@ traceability-dashboard-service/
 - [.NET 10 SDK](https://dotnet.microsoft.com/download) and [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 - [`wonrich-infra`](https://github.com/wonrich-dairy/wonrich-infra) cloned next to this repository
 - Your public IP added to the `wonrichmysql` firewall (ask the DevOps member)
+- A GitHub token that can read the org's packages, for `Wonrich.QualityLab.Contracts` (see `nuget.config`).
+  `dotnet restore` and `docker compose build` both read it from `GITHUB_PACKAGES_TOKEN`:
+
+  ```bash
+  gh auth refresh -h github.com -s read:packages   # once
+  export GITHUB_PACKAGES_TOKEN=$(gh auth token)
+  ```
 
 ### 1. Start the shared Kafka broker
 
@@ -111,10 +118,28 @@ Kafka is then reached at `localhost:29092`, the default in `appsettings.json`.
 | `Kafka:SaslMechanism` | `Kafka__SaslMechanism` | `KAFKA_SASL_MECHANISM` | `Plain` on Azure |
 | `Kafka:SaslUsername` | `Kafka__SaslUsername` | `KAFKA_SASL_USERNAME` | Broker user |
 | `Kafka:SaslPassword` | `Kafka__SaslPassword` | `KAFKA_SASL_PASSWORD` | Broker password (secret) |
+| `Kafka:Topics:BatchDeterminations` | `Kafka__Topics__BatchDeterminations` | | Quality Lab's determinations, default `wonrich.quality-lab.batch-determinations.v1` |
+| `Kafka:Topics:BatchDeterminationsDeadLetter` | `Kafka__Topics__BatchDeterminationsDeadLetter` | | Where determinations that cannot be applied are parked, default `wonrich.dlq.traceability-batch-determinations.v1` |
+| `Kafka:ConsumerGroups:BatchDeterminations` | `Kafka__ConsumerGroups__BatchDeterminations` | | Consumer group for the determinations, default `traceability-batch-determinations`. Also the group `processed_messages` records them under |
+| `Kafka:Consumers:Enabled` | `Kafka__Consumers__Enabled` | | `false` stops the consumers from starting (the integration tests set it). Default `true` |
 | `MccIntake:BaseUrl` | `MccIntake__BaseUrl` | `MCC_INTAKE_BASE_URL` | MCC and Intake Service base URL (SCRUM-12) |
 | `MccIntake:ClientId` | `MccIntake__ClientId` | `MCC_INTAKE_CLIENT_ID` | Service-to-service client ID |
 | `MccIntake:ClientSecret` | `MccIntake__ClientSecret` | `MCC_INTAKE_CLIENT_SECRET` | Service-to-service secret |
 | `Cors:AllowedOrigins` | `Cors__AllowedOrigins__0`, `__1`, ... | `CORS_ORIGIN` | Frontend origins allowed to call the API |
+
+The topic, dead-letter topic and consumer group are registered in `wonrich-infra` (`kafka/topics.env`, `docs/kafka.md`; SCRUM-126). The brokers do not create topics on first use, so change them there first.
+
+### Lab determination consumer (SCRUM-131)
+
+Reads `BatchCleared` and `BatchFailed` from Quality Lab and applies each one in a single database transaction (`BatchDeterminationHandler`). The offset is committed only after that succeeds, so nothing is skipped; an event read twice is recognised in `processed_messages` and ignored.
+
+| Failure | What happens |
+|---|---|
+| Transient, e.g. the database, or the batch not created yet by SCRUM-130 | Retried 3 times, after 1 s, 2 s and 4 s, then dead-lettered |
+| Can never succeed: the body is not valid JSON or not the contract's shape, or the batch code has no day of the year | Dead-lettered at once |
+| The dead-letter publish fails too | Not committed: the message is read again after 5 s, so it is never lost |
+
+A dead letter is the original message unchanged (key, value and headers) plus `x-original-topic`, `x-original-partition`, `x-original-offset`, `x-failure-reason`, `x-failure-timestamp` and `x-attempt-count`. Once the cause is fixed, replay it by publishing it back onto the source topic as it is.
 
 > **Never commit secrets.** Use `.env` (git-ignored) for Docker Compose, user secrets for `dotnet run`, App Service settings for Azure, and GitHub environment secrets for CI/CD.
 
