@@ -129,14 +129,21 @@ Kafka is then reached at `localhost:29092`, the default in `appsettings.json`.
 
 The topic, dead-letter topic and consumer group are registered in `wonrich-infra` (`kafka/topics.env`, `docs/kafka.md`; SCRUM-126). The brokers do not create topics on first use, so change them there first.
 
-### Lab determination consumer (SCRUM-131)
+### Kafka consumers
 
-Reads `BatchCleared` and `BatchFailed` from Quality Lab and applies each one in a single database transaction (`BatchDeterminationHandler`). The offset is committed only after that succeeds, so nothing is skipped; an event read twice is recognised in `processed_messages` and ignored.
+Every consumer runs on the same base (`Infrastructure/Kafka`): `KafkaEventConsumer` reads the topic as the consumer's group, and `EventProcessor` sends each event, by its `eventType` header, to the handler registered for that type. The handler runs in one database transaction together with the event's `processed_messages` row, so an event read twice is recognised and skipped. The offset is committed only after the transaction commits or the message is dead-lettered, so nothing is skipped. Every log line written while an event is handled carries its `x-correlation-id` as `CorrelationId`, with its `EventId` and `EventType`.
+
+| Consumer | Topic | Handlers |
+|---|---|---|
+| Lab determinations (SCRUM-131) | `wonrich.quality-lab.batch-determinations.v1` | `BatchCleared`, `BatchFailed`: `LabDeterminationHandler` |
+
+To add one, register it with `services.AddEventConsumer(options, handlers => handlers.Add<THandler>("EventType"))`; see `LabDeterminationConsumer`.
 
 | Failure | What happens |
 |---|---|
 | Transient, e.g. the database, or the batch not created yet by SCRUM-130 | Retried 3 times, after 1 s, 2 s and 4 s, then dead-lettered |
-| Can never succeed: the body is not valid JSON or not the contract's shape, or the batch code has no day of the year | Dead-lettered at once |
+| An event type with no handler on that consumer | Retried the same way, then dead-lettered, so it can be replayed once a handler exists |
+| Can never succeed: no value or event ID, the body is not valid JSON or not the contract's shape, or the batch code has no day of the year | Dead-lettered at once |
 | The dead-letter publish fails too | Not committed: the message is read again after 5 s, so it is never lost |
 
 A dead letter is the original message unchanged (key, value and headers) plus `x-original-topic`, `x-original-partition`, `x-original-offset`, `x-failure-reason`, `x-failure-timestamp` and `x-attempt-count`. Once the cause is fixed, replay it by publishing it back onto the source topic as it is.

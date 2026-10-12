@@ -1,6 +1,4 @@
-using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using MySqlConnector;
 using Wonrich.QualityLab.Contracts.Events;
 using TraceabilityService.Api.Infrastructure.Persistence;
 using TraceabilityService.Domain.Entities;
@@ -8,70 +6,47 @@ using TraceabilityService.Infrastructure.Kafka;
 
 namespace TraceabilityService.Application;
 
-/// <summary>One message from wonrich.quality-lab.batch-determinations.v1, as received.</summary>
-/// <param name="EventType">The eventType header; the body's eventType is used when it is missing.</param>
-/// <param name="Payload">The message value: the event as camelCase JSON.</param>
-public sealed record BatchDeterminationMessage(string Topic, string? EventType, string Payload);
-
-public enum BatchDeterminationOutcome
+/// <summary>
+/// The Quality Lab determination consumer (SCRUM-131): BatchCleared and BatchFailed from
+/// wonrich.quality-lab.batch-determinations.v1, each to a <see cref="LabDeterminationHandler{TEvent}"/>.
+/// </summary>
+public static class LabDeterminationConsumer
 {
-    Applied,
+    public const string Name = "BatchDeterminations";
 
-    // Already handled by this consumer group: Quality Lab's relay delivers at least once.
-    Duplicate,
-
-    // Not BatchCleared or BatchFailed. Quality Lab's contract says to skip an unknown type
-    // on a v1 topic rather than dead-letter it.
-    Ignored
-}
-
-/// <summary>Applies one lab determination message; see <see cref="BatchDeterminationHandler"/>.</summary>
-public interface IBatchDeterminationHandler
-{
-    Task<BatchDeterminationOutcome> HandleAsync(BatchDeterminationMessage message, CancellationToken cancellationToken = default);
+    public static IServiceCollection AddLabDeterminationConsumer(this IServiceCollection services, IConfiguration configuration) =>
+        services.AddEventConsumer(
+            KafkaConsumerOptions.From(configuration, Name,
+                topic: "wonrich.quality-lab.batch-determinations.v1",
+                consumerGroup: "traceability-batch-determinations",
+                deadLetterTopic: "wonrich.dlq.traceability-batch-determinations.v1"),
+            handlers => handlers
+                .Add<LabDeterminationHandler<BatchClearedEvent>>("BatchCleared")
+                .Add<LabDeterminationHandler<BatchFailedEvent>>("BatchFailed"));
 }
 
 /// <summary>
-/// Applies one Quality Lab determination to the read model in a single transaction
-/// (SCRUM-131): the lab_determinations row (and the one it supersedes), a Lab timeline
-/// event, a failure's deviations, the batch's status, LastEventAt and completeness, and
-/// both daily aggregate tables. What the determination does is decided by
+/// Applies one Quality Lab determination to the read model (SCRUM-131): the
+/// lab_determinations row (and the one it supersedes), a Lab timeline event, a failure's
+/// deviations, the batch's status, LastEventAt and completeness, and both daily aggregate
+/// tables. Runs inside the event's transaction (<see cref="EventProcessor"/>), which also
+/// skips a redelivered event. What the determination does is decided by
 /// <see cref="DeterminationResolver"/>; this class only reads and writes.
 /// </summary>
-public class BatchDeterminationHandler(
-    TraceabilityDbContext db, TimeProvider time, BatchDeterminationConsumerOptions options) : IBatchDeterminationHandler
+public sealed class LabDeterminationHandler<TEvent>(
+    TraceabilityDbContext db, TimeProvider time, ILogger<LabDeterminationHandler<TEvent>> logger)
+    : TypedEventHandler<TEvent> where TEvent : BatchDeterminationEventBase
 {
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
-
     private readonly TraceabilityDbContext _db = db;
     private readonly TimeProvider _time = time;
 
-    // processed_messages is per consumer group, so this is the group the consumer reads as.
-    private readonly string _consumerGroup = options.ConsumerGroup;
-
     /// <exception cref="BatchNotFoundException">
-    /// The batch is not here yet. Nothing is written, so a retry starts clean.
+    /// The batch is not here yet. The transaction rolls back, so a retry starts clean.
     /// </exception>
-    public async Task<BatchDeterminationOutcome> HandleAsync(
-        BatchDeterminationMessage message, CancellationToken cancellationToken = default)
+    protected override async Task HandleAsync(TEvent determination, ConsumedEvent consumed, CancellationToken cancellationToken)
     {
-        var determination = Deserialize(message);
-        if (determination is null)
-        {
-            return BatchDeterminationOutcome.Ignored;
-        }
-
         var now = _time.GetUtcNow().UtcDateTime;
 
-        await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
-
-        if (!await TryRecordProcessedAsync(determination.EventId, message.Topic, now, cancellationToken))
-        {
-            await transaction.RollbackAsync(cancellationToken);
-            return BatchDeterminationOutcome.Duplicate;
-        }
-
-        // Thrown inside the transaction, so the processed_messages row goes with it.
         var batch = await _db.BatchRecords
             .Include(b => b.UpstreamSnapshot)
             .SingleOrDefaultAsync(b => b.BatchId == determination.BatchId, cancellationToken)
@@ -97,8 +72,8 @@ public class BatchDeterminationHandler(
         // The same determination under another event ID: it is already applied.
         if (resolution.IsDuplicate)
         {
-            await transaction.RollbackAsync(cancellationToken);
-            return BatchDeterminationOutcome.Duplicate;
+            logger.LogInformation("Determination {DeterminationId} for {BatchId} is already applied", determination.DeterminationId, batch.BatchId);
+            return;
         }
 
         // Saved first: the determination and deviation rows point at its Id.
@@ -110,7 +85,7 @@ public class BatchDeterminationHandler(
             OccurredAt = determination.DeterminedAtUtc,
             RecordedBy = determination.DeterminedBy,
             IsDeviation = determination.IsDeviation || deviations.Count > 0,
-            Payload = message.Payload,
+            Payload = consumed.Payload,
             SourceEventId = determination.EventId,
             ContractVersion = determination.SchemaVersion,
         };
@@ -167,49 +142,8 @@ public class BatchDeterminationHandler(
 
         await ApplyAggregatesAsync(batch, productionDay, resolution.Changes, now, cancellationToken);
 
-        await transaction.CommitAsync(cancellationToken);
-        return BatchDeterminationOutcome.Applied;
-    }
-
-    private static BatchDeterminationEventBase? Deserialize(BatchDeterminationMessage message)
-    {
-        var eventType = message.EventType;
-        if (string.IsNullOrEmpty(eventType))
-        {
-            using var body = JsonDocument.Parse(message.Payload);
-            eventType = body.RootElement.TryGetProperty("eventType", out var type) ? type.GetString() : null;
-        }
-
-        return eventType switch
-        {
-            "BatchCleared" => JsonSerializer.Deserialize<BatchClearedEvent>(message.Payload, Json),
-            "BatchFailed" => JsonSerializer.Deserialize<BatchFailedEvent>(message.Payload, Json),
-            _ => null,
-        };
-    }
-
-    // Inserting is the duplicate check: the unique index on (ConsumerGroup, SourceEventId)
-    // rejects a second row, even if two consumers race.
-    private async Task<bool> TryRecordProcessedAsync(Guid eventId, string topic, DateTime now, CancellationToken cancellationToken)
-    {
-        _db.ProcessedMessages.Add(new ProcessedMessage
-        {
-            ConsumerGroup = _consumerGroup,
-            SourceEventId = eventId,
-            Topic = topic,
-            ProcessedAt = now,
-        });
-
-        try
-        {
-            await _db.SaveChangesAsync(cancellationToken);
-            return true;
-        }
-        catch (DbUpdateException ex) when (ex.InnerException is MySqlException { ErrorCode: MySqlErrorCode.DuplicateKeyEntry })
-        {
-            _db.ChangeTracker.Clear();
-            return false;
-        }
+        logger.LogInformation("Determination {DeterminationId} applied to {BatchId}: {Status}, {Current}",
+            determination.DeterminationId, batch.BatchId, batch.Status, resolution.IsActive ? "current" : "already superseded");
     }
 
     // Each stored determination with the codes of its deviation rows, which are what the
