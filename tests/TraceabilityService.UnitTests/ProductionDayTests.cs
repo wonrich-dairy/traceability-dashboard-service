@@ -34,6 +34,20 @@ public class ProductionDayTests
     }
 
     [Theory]
+    // The batch was created from an event at the first time; a late, earlier event then moves
+    // FirstEventAt back to the second. The production day must not change.
+    [InlineData("262-FM-B", "2026-09-19T03:00:00Z", "2026-09-16T03:00:00Z")]
+    [InlineData("001-FM-A", "2027-01-01T03:00:00Z", "2026-12-30T03:00:00Z")]
+    [InlineData("365-FM-A", "2026-12-31T03:00:00Z", "2027-01-02T03:00:00Z")]
+    public void A_late_earlier_event_does_not_move_the_batch_to_another_day(string batchId, string createdFrom, string movedTo)
+    {
+        var atCreation = FactoryCalendar.ProductionDay(batchId, DateTime.Parse(createdFrom).ToUniversalTime());
+        var afterLateEvent = FactoryCalendar.ProductionDay(batchId, DateTime.Parse(movedTo).ToUniversalTime());
+
+        Assert.Equal(atCreation, afterLateEvent);
+    }
+
+    [Theory]
     [InlineData("FM-262-B")]
     [InlineData("0-FM-A")]
     [InlineData("400-FM-A")]

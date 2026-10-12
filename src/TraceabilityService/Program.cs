@@ -40,6 +40,7 @@ builder.Services.AddScoped<IDashboardService, DashboardService>();
 // Each one: a transaction per event with a duplicate check, retries, then dead-letters, and
 // commits after either (EventProcessor). Handlers are per event type.
 builder.Services.AddLabDeterminationConsumer(builder.Configuration);
+builder.Services.AddProcessingConsumers(builder.Configuration);
 
 // "Today" for the dashboard is the date in Asia/Colombo.
 builder.Services.TryAddSingleton(TimeProvider.System);

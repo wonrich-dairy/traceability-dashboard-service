@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Wonrich.QualityLab.Contracts.Events;
 using TraceabilityService.Api.Infrastructure.Persistence;
 using TraceabilityService.Domain.Entities;
@@ -14,8 +15,10 @@ public static class LabDeterminationConsumer
 {
     public const string Name = "BatchDeterminations";
 
-    public static IServiceCollection AddLabDeterminationConsumer(this IServiceCollection services, IConfiguration configuration) =>
-        services.AddEventConsumer(
+    public static IServiceCollection AddLabDeterminationConsumer(this IServiceCollection services, IConfiguration configuration)
+    {
+        services.TryAddScoped<AggregateWriter>();
+        return services.AddEventConsumer(
             KafkaConsumerOptions.From(configuration, Name,
                 topic: "wonrich.quality-lab.batch-determinations.v1",
                 consumerGroup: "traceability-batch-determinations",
@@ -23,6 +26,7 @@ public static class LabDeterminationConsumer
             handlers => handlers
                 .Add<LabDeterminationHandler<BatchClearedEvent>>("BatchCleared")
                 .Add<LabDeterminationHandler<BatchFailedEvent>>("BatchFailed"));
+    }
 }
 
 /// <summary>
@@ -34,7 +38,7 @@ public static class LabDeterminationConsumer
 /// <see cref="DeterminationResolver"/>; this class only reads and writes.
 /// </summary>
 public sealed class LabDeterminationHandler<TEvent>(
-    TraceabilityDbContext db, TimeProvider time, ILogger<LabDeterminationHandler<TEvent>> logger)
+    TraceabilityDbContext db, AggregateWriter aggregates, TimeProvider time, ILogger<LabDeterminationHandler<TEvent>> logger)
     : TypedEventHandler<TEvent> where TEvent : BatchDeterminationEventBase
 {
     private readonly TraceabilityDbContext _db = db;
@@ -140,7 +144,12 @@ public sealed class LabDeterminationHandler<TEvent>(
 
         await _db.SaveChangesAsync(cancellationToken);
 
-        await ApplyAggregatesAsync(batch, productionDay, resolution.Changes, now, cancellationToken);
+        await aggregates.ApplyAsync(batch, productionDay, new AggregateDelta
+        {
+            StatusCounts = resolution.Changes.StatusCounts,
+            LabDeviations = resolution.Changes.LabDeviations,
+            ReasonCodes = resolution.Changes.ReasonCodes,
+        }, now, cancellationToken);
 
         logger.LogInformation("Determination {DeterminationId} applied to {BatchId}: {Status}, {Current}",
             determination.DeterminationId, batch.BatchId, batch.Status, resolution.IsActive ? "current" : "already superseded");
@@ -172,56 +181,6 @@ public sealed class LabDeterminationHandler<TEvent>(
         batch.UpstreamSnapshot?.ResolutionStatus == ResolutionStatus.Resolved
         && await _db.TimelineEvents.AnyAsync(
             e => e.BatchId == batch.BatchId && e.Checkpoint == Checkpoint.Processing, cancellationToken);
-
-    // INSERT ... ON DUPLICATE KEY UPDATE adds to the row atomically, so consumers on other
-    // partitions updating the same day cannot lose each other's changes, and a missing row
-    // is created. A status move is -1 and +1, so BatchCount stays as it is.
-    private async Task ApplyAggregatesAsync(
-        BatchRecord batch, DateOnly day, AggregateChanges changes, DateTime now, CancellationToken cancellationToken)
-    {
-        if (changes.StatusCounts.Count > 0 || changes.LabDeviations != 0)
-        {
-            var pending = changes.StatusCounts.GetValueOrDefault(StatusBucket.Pending);
-            var cleared = changes.StatusCounts.GetValueOrDefault(StatusBucket.Cleared);
-            var failed = changes.StatusCounts.GetValueOrDefault(StatusBucket.Failed);
-            var onHold = changes.StatusCounts.GetValueOrDefault(StatusBucket.OnHold);
-            var lab = changes.LabDeviations;
-
-            await _db.Database.ExecuteSqlInterpolatedAsync($"""
-                INSERT INTO daily_quality_aggregates
-                    (Date, ProductLine, Facility, BatchCount, PendingCount, ClearedCount, FailedCount, OnHoldCount,
-                     DeviationCount, MccDeviationCount, IntakeDeviationCount, ProcessingDeviationCount, LabDeviationCount, UpdatedAt)
-                VALUES ({day}, {batch.ProductLine}, {batch.Facility}, 0, {pending}, {cleared}, {failed}, {onHold},
-                        {lab}, 0, 0, 0, {lab}, {now})
-                ON DUPLICATE KEY UPDATE
-                    PendingCount = PendingCount + {pending},
-                    ClearedCount = ClearedCount + {cleared},
-                    FailedCount = FailedCount + {failed},
-                    OnHoldCount = OnHoldCount + {onHold},
-                    DeviationCount = DeviationCount + {lab},
-                    LabDeviationCount = LabDeviationCount + {lab},
-                    UpdatedAt = {now}
-                """, cancellationToken);
-        }
-
-        foreach (var (code, change) in changes.ReasonCodes)
-        {
-            await _db.Database.ExecuteSqlInterpolatedAsync($"""
-                INSERT INTO daily_reason_code_aggregates (Date, ProductLine, Facility, ReasonCode, DeviationCount, UpdatedAt)
-                VALUES ({day}, {batch.ProductLine}, {batch.Facility}, {code}, {change}, {now})
-                ON DUPLICATE KEY UPDATE
-                    DeviationCount = DeviationCount + {change},
-                    UpdatedAt = {now}
-                """, cancellationToken);
-
-            // The dashboard lists every row it sums, so a reason that no longer applies is removed.
-            await _db.Database.ExecuteSqlInterpolatedAsync($"""
-                DELETE FROM daily_reason_code_aggregates
-                WHERE Facility = {batch.Facility} AND Date = {day} AND ProductLine = {batch.ProductLine}
-                  AND ReasonCode = {code} AND DeviationCount = 0
-                """, cancellationToken);
-        }
-    }
 
     private static DateTime Min(DateTime a, DateTime b) => a <= b ? a : b;
 
