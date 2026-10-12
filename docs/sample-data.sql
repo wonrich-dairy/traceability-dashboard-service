@@ -103,6 +103,9 @@ CREATE TEMPORARY TABLE seed_consignment (
     Snf          decimal(4,2) NULL,
     Clr          decimal(4,2) NULL,
     Temp         decimal(4,2) NULL,
+    -- The tightest of fat, SNF and CLR against its floor, and which one it was.
+    Margin       decimal(6,4) NULL,
+    Measure      varchar(20) NULL,
     PRIMARY KEY (BatchId, Society)
 );
 
@@ -291,6 +294,17 @@ SET c.RegisteredAt = b.MccAt - INTERVAL (45 - CAST(SUBSTRING(c.Society, 3) AS SI
     c.Clr  = b.Clr + (CAST(SUBSTRING(c.Society, 3) AS SIGNED) % 3 - 1) * 0.10,
     c.Temp = 5.00 + CAST(SUBSTRING(c.Society, 3) AS SIGNED) % 4 * 0.50;
 
+-- Margins as the MCC and Intake Service scores them: (value - floor) / floor, the
+-- tightest measure being the consignment's score. The floors here are the reference
+-- ranges' minimums: fat 3.5%, SNF 8.5%, CLR 27. The marginal societies panel ranks on it.
+UPDATE seed_consignment
+SET Margin = LEAST(ROUND((Fat - 3.50) / 3.50, 4), ROUND((Snf - 8.50) / 8.50, 4), ROUND((Clr - 27.00) / 27.00, 4)),
+    Measure = CASE LEAST(ROUND((Fat - 3.50) / 3.50, 4), ROUND((Snf - 8.50) / 8.50, 4), ROUND((Clr - 27.00) / 27.00, 4))
+                  WHEN ROUND((Snf - 8.50) / 8.50, 4) THEN 'Snf'
+                  WHEN ROUND((Clr - 27.00) / 27.00, 4) THEN 'CorrectedClr'
+                  ELSE 'FatPercent'
+              END;
+
 START TRANSACTION;
 
 DELETE FROM batch_records
@@ -329,7 +343,8 @@ FROM seed_batch b;
 --              consignments[] { reference, society { code }, volumeLitres,
 --                               registeredAt, registeredBy,
 --                               panel { fatPercentage, snfPercentage, clrReading,
---                                       temperatureC, verdict } } }
+--                                       temperatureC, verdict,
+--                                       tightestMargin, tightestMeasure } } }
 -- Here a society's milk goes to tank T1 or T2 by whether its number is odd, and
 -- the dispatch total is everything drawn from both.
 
@@ -379,7 +394,9 @@ LEFT JOIN (
                    'registeredBy', 'mcc.intake.officer',
                    'panel', JSON_OBJECT('fatPercentage', c.Fat, 'snfPercentage', c.Snf,
                                         'clrReading', c.Clr, 'temperatureC', c.Temp,
-                                        'verdict', 'Accepted'))) AS Consignments
+                                        'verdict', 'Accepted',
+                                        'tightestMargin', c.Margin,
+                                        'tightestMeasure', c.Measure))) AS Consignments
         FROM seed_consignment c
         GROUP BY c.BatchId, TankCode
     ) tank
@@ -536,11 +553,14 @@ SET e.IsDeviation = 1;
 -- ---------------------------------------------------------------------------
 -- What the consumer would have counted from the rows above, per facility,
 -- production day and product line. Pending is anything not yet decided and not
--- held: Chilling, Processing or AwaitingLab.
+-- held: Chilling, Processing or AwaitingLab. Deviations are counted in total and by
+-- the checkpoint that reported them; the four checkpoint counts add up to the total.
 
 INSERT INTO daily_quality_aggregates
     (Date, ProductLine, Facility, BatchCount,
-     PendingCount, ClearedCount, FailedCount, OnHoldCount, DeviationCount, UpdatedAt)
+     PendingCount, ClearedCount, FailedCount, OnHoldCount,
+     DeviationCount, MccDeviationCount, IntakeDeviationCount,
+     ProcessingDeviationCount, LabDeviationCount, UpdatedAt)
 SELECT s.ProductionDate, r.ProductLine, r.Facility,
        COUNT(*),
        SUM(r.Status IN ('Chilling', 'Processing', 'AwaitingLab')),
@@ -548,11 +568,22 @@ SELECT s.ProductionDate, r.ProductLine, r.Facility,
        SUM(r.Status = 'Failed'),
        SUM(r.Status = 'OnHold'),
        COALESCE(SUM(dv.Deviations), 0),
+       COALESCE(SUM(dv.Mcc), 0),
+       COALESCE(SUM(dv.Intake), 0),
+       COALESCE(SUM(dv.Processing), 0),
+       COALESCE(SUM(dv.Lab), 0),
        MAX(r.LastEventAt)
 FROM batch_records r
 JOIN seed_batch s ON s.BatchId = r.BatchId
 LEFT JOIN (
-    SELECT BatchId, COUNT(*) AS Deviations FROM deviation_records GROUP BY BatchId
+    SELECT BatchId,
+           COUNT(*) AS Deviations,
+           SUM(Checkpoint = 'Mcc') AS Mcc,
+           SUM(Checkpoint = 'Intake') AS Intake,
+           SUM(Checkpoint = 'Processing') AS Processing,
+           SUM(Checkpoint = 'Lab') AS Lab
+    FROM deviation_records
+    GROUP BY BatchId
 ) dv ON dv.BatchId = r.BatchId
 GROUP BY s.ProductionDate, r.ProductLine, r.Facility;
 
@@ -623,6 +654,15 @@ DROP TEMPORARY TABLE seed_batch, seed_consignment;
 --   WHERE Facility = 'FACTORY-01'
 --   GROUP BY ReasonCode
 --   ORDER BY deviations DESC;
+--
+-- Deviations by checkpoint. Expected: MCC 2, intake 2, processing 2, lab 7, which
+-- add up to the 13 in total.
+--
+--   SELECT SUM(MccDeviationCount) AS mcc, SUM(IntakeDeviationCount) AS intake,
+--          SUM(ProcessingDeviationCount) AS processing, SUM(LabDeviationCount) AS lab,
+--          SUM(DeviationCount) AS total
+--   FROM daily_quality_aggregates
+--   WHERE Facility = 'FACTORY-01';
 --
 -- Backward trace for the failed batch: first event flagged as a deviation, then
 -- the deviation with its reading and limit.

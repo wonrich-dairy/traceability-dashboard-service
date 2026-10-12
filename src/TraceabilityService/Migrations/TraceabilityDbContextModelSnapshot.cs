@@ -122,6 +122,8 @@ namespace TraceabilityService.Migrations
 
                     b.HasIndex("DispatchRef");
 
+                    b.HasIndex("Facility", "FirstEventAt");
+
                     b.HasIndex("ProductLine", "Status");
 
                     b.HasIndex("Status", "LastEventAt");
@@ -159,10 +161,22 @@ namespace TraceabilityService.Migrations
                     b.Property<int>("FailedCount")
                         .HasColumnType("int");
 
+                    b.Property<int>("IntakeDeviationCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("LabDeviationCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MccDeviationCount")
+                        .HasColumnType("int");
+
                     b.Property<int>("OnHoldCount")
                         .HasColumnType("int");
 
                     b.Property<int>("PendingCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ProcessingDeviationCount")
                         .HasColumnType("int");
 
                     b.Property<string>("ProductLine")
