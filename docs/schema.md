@@ -14,6 +14,7 @@ Traceability Service keeps a **read model**: a copy of every batch's history, bu
 | `timeline_events` | Upstream event applied to a batch | The batch's history, in the order things happened |
 | `upstream_snapshots` | Batch | What the MCC and Intake Service knows about the batch's dispatch: the dispatch note, tanks and consignments |
 | `deviation_records` | Limit broken | What went out of range, by how much, and which event reported it |
+| `lab_determinations` | Quality Lab determination | The lab's Cleared or Failed result, superseded ones included |
 | `daily_quality_aggregates` | Facility, production day and product line | Pre-counted batches by status |
 | `daily_reason_code_aggregates` | Facility, production day, product line and reason code | Pre-counted deviations by reason |
 | `processed_messages` | Event handled by a consumer group | Stops an event redelivered by Kafka being applied twice |
@@ -25,6 +26,8 @@ erDiagram
     batch_records ||--o| upstream_snapshots : "BatchId"
     batch_records ||--o{ deviation_records : "BatchId"
     timeline_events ||--o{ deviation_records : "TimelineEventId"
+    batch_records ||--o{ lab_determinations : "BatchId"
+    timeline_events ||--o| lab_determinations : "TimelineEventId"
     batch_records {
         varchar BatchId UK
         varchar Facility
@@ -39,6 +42,12 @@ erDiagram
     deviation_records {
         varchar BatchId FK
         bigint TimelineEventId FK
+    }
+    lab_determinations {
+        char DeterminationId UK
+        varchar BatchId FK
+        bigint TimelineEventId FK, UK
+        char SupersedesDeterminationId
     }
     daily_quality_aggregates {
         varchar Facility
@@ -71,12 +80,12 @@ The two aggregate tables, `processed_messages` and `audit_entries` have no forei
 |---|---|
 | Business key | `BatchId` (the batch code, e.g. `262-FM-B`) is `varchar(50)` everywhere. It is an alternate key on `batch_records`, and the child tables' foreign keys point at it rather than at `Id` |
 | Facility | `varchar(50)`, the same value as the token's `facility` claim, e.g. `FACTORY-01`. Every dashboard query filters on it, so it leads the indexes those queries use |
-| Coded columns | Enums (`Status`, `Completeness`, `Checkpoint`, `ResolutionStatus`) are stored as the C# member name in a `varchar`, e.g. `Failed`, not `5`. The match is exact: `Mcc`, not `MCC` |
+| Coded columns | Enums (`Status`, `Completeness`, `Checkpoint`, `ResolutionStatus`, `Result`) are stored as the C# member name in a `varchar`, e.g. `Failed`, not `5`. The match is exact: `Mcc`, not `MCC` |
 | Open-ended codes | `EventType`, `ProductLine` and `ReasonCode` are plain strings, so a new upstream event type, product line or reason needs no migration |
 | Readings | `decimal(5,2)`: stored exactly, so 3.85 is 3.85 and not the nearest binary fraction |
 | Timestamps | `datetime(6)`, in UTC |
 | JSON | MySQL `json` columns hold payloads; read fields with `Payload->>'$.temperatureC'` |
-| Event IDs | `char(36)` GUIDs, the upstream `EventId` |
+| Event IDs | `char(36)` GUIDs: the upstream `EventId`, and Quality Lab's `DeterminationId` |
 | Surrogate keys | `int` auto-increment; `bigint` for the tables that grow with every event (`timeline_events`, `processed_messages`, `audit_entries`) |
 | Names | Tables `snake_case` and plural; columns `PascalCase`, matching the entity properties |
 
@@ -210,6 +219,43 @@ One event can produce several rows: a lab result with low pH and abnormal taste 
 | `IX_deviation_records_ReasonCode_OccurredAt` | `ReasonCode`, `OccurredAt` | | One kind of deviation over time, e.g. every `TemperatureHigh` this month |
 | `IX_deviation_records_TimelineEventId` | `TimelineEventId` | | The foreign key |
 
+### `lab_determinations`
+
+One row per Quality Lab determination (SCRUM-131). Quality Lab never edits a determination: a supersede publishes a new one that names the one it replaces. This table keeps both, so a batch's lab history shows what was decided first and what replaced it.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `Id` | `int` | | Auto-increment |
+| `DeterminationId` | `char(36)` | | Quality Lab's `DeterminationId`. Unique |
+| `BatchId` | `varchar(50)` | | → `batch_records.BatchId`, cascade delete. The event's `batchId`, which holds the batch code |
+| `Result` | `varchar(20)` | | `Cleared` or `Failed`. See [Determination result](#determination-result) |
+| `DeterminedAt` | `datetime(6)` | | When the lab made the determination: the event's `determinedAtUtc` |
+| `DeterminedBy` | `varchar(100)` | | The analyst's user ID: the event's `determinedBy` |
+| `SupersedesDeterminationId` | `char(36)` | Yes | The determination this one replaced: the event's `supersedesDeterminationId`. Null for a batch's first determination. Not a foreign key, because the replaced determination may never have reached this service, e.g. it was published before Traceability started consuming the topic |
+| `IsSuperseded` | `tinyint(1)` | | 1 once a later determination names this one in `SupersedesDeterminationId` |
+| `SupersededAt` | `datetime(6)` | Yes | The later determination's `DeterminedAt`. Null while this one is current |
+| `TimelineEventId` | `bigint` | | → `timeline_events.Id`, cascade delete. The timeline row the `BatchCleared` or `BatchFailed` event was recorded as. A failure's out-of-spec parameters are `deviation_records` rows on that same timeline row |
+
+A batch's current determination is its row with `IsSuperseded = 0`. The database does not enforce that there is only one: the consumer must add a supersede's row and mark the row it names in the same transaction.
+
+| Index | Columns | Unique | Serves |
+|---|---|---|---|
+| `IX_lab_determinations_DeterminationId` | `DeterminationId` | Yes | A redelivered event cannot add a second row |
+| `IX_lab_determinations_BatchId_DeterminedAt` | `BatchId`, `DeterminedAt` | | One batch's determinations, in the order they were made. Also serves the foreign key |
+| `IX_lab_determinations_SupersedesDeterminationId` | `SupersedesDeterminationId` | | Finding the row a supersede replaces |
+| `IX_lab_determinations_TimelineEventId` | `TimelineEventId` | Yes | One determination per timeline row; also the foreign key |
+
+A failed batch's lab history, with the parameters that put it out of spec:
+
+```sql
+SELECT d.DeterminationId, d.Result, d.DeterminedAt, d.DeterminedBy, d.IsSuperseded,
+       r.Parameter, r.ObservedValue, r.Limit
+FROM lab_determinations d
+LEFT JOIN deviation_records r ON r.TimelineEventId = d.TimelineEventId
+WHERE d.BatchId = '262-FM-B'
+ORDER BY d.DeterminedAt;
+```
+
 ### `daily_quality_aggregates`
 
 | Column | Type | Null | Notes |
@@ -305,6 +351,15 @@ Upstream relays deliver at least once, so the same event can arrive twice. A con
 | `Failed` | Quality Lab's `BatchFailed` | failed |
 
 **Open question:** the team agreed that failed panels go on hold. Whether `BatchFailed` should move a batch to `Failed` or to `OnHold` is not settled yet. The schema supports either; the consumer decides.
+
+### Determination result
+
+`lab_determinations.Result`. Unlike the batch status, this is what the lab decided, whatever the consumer does with the batch.
+
+| Value | Quality Lab event |
+|---|---|
+| `Cleared` | `BatchCleared` |
+| `Failed` | `BatchFailed` |
 
 ### Completeness
 
@@ -461,8 +516,8 @@ How the batch record endpoint uses it:
 
 | Deleting | Also deletes |
 |---|---|
-| A `batch_records` row | Its `timeline_events`, `upstream_snapshots` row and `deviation_records` |
-| A `timeline_events` row | Its `deviation_records` |
+| A `batch_records` row | Its `timeline_events`, `upstream_snapshots` row, `deviation_records` and `lab_determinations` |
+| A `timeline_events` row | Its `deviation_records` and its `lab_determinations` row |
 
 Nothing else cascades. Deleting a batch leaves its `audit_entries` (they are meant to outlive the rows they describe) and its `processed_messages` rows. It also leaves its figures in both aggregate tables, which then include a batch that no longer exists and have to be recalculated.
 
@@ -476,7 +531,8 @@ Nothing else cascades. Deleting a batch leaves its `audit_entries` (they are mea
 | `20260920172550_AddBatchTraceProductionDateStatusIndex` | Index on `batch_traces (ProductionDate, CurrentStatus)` |
 | `20261010175413_ReplaceBatchTraceWithReadModel` | Drops the three original tables and creates the eight above. Down drops them and recreates the originals, empty |
 | `20261011021748_AddBatchRecordBatchReference` | Adds the nullable `batch_records.BatchReference` and its index. Down removes both |
-| `20261011180541_AddDailyAggregateCheckpointDeviationCounts` | Adds `MccDeviationCount`, `IntakeDeviationCount`, `ProcessingDeviationCount` and `LabDeviationCount` to `daily_quality_aggregates`, each defaulting to 0, and the index `IX_batch_records_Facility_FirstEventAt` for the societies panel. Existing rows are not backfilled: recalculate them, or reload the sample data. Down removes the four columns and the index |
+| `20261011182048_AddDailyAggregateCheckpointDeviationCounts` | Adds `MccDeviationCount`, `IntakeDeviationCount`, `ProcessingDeviationCount` and `LabDeviationCount` to `daily_quality_aggregates`, each defaulting to 0, and the index `IX_batch_records_Facility_FirstEventAt` for the societies panel. Existing rows are not backfilled: recalculate them, or reload the sample data. Down removes the four columns and the index |
+| `20261012142627_AddLabDeterminations` | Creates `lab_determinations` and its four indexes. Adds nothing to existing tables. Down drops the table |
 
 `ReplaceBatchTraceWithReadModel` drops tables, which the rules in [database.md](database.md) do not normally allow. It is safe here only because the original tables never reached staging or production, so no deployed version depends on them. Any data in them is lost on upgrade; for a development database, reload it from the sample data. Later migrations must follow the add-only rule.
 
@@ -513,7 +569,7 @@ The integration tests cover the schema:
 | [`sample-data.sql`](sample-data.sql) | Loads 24 batches over 2026-09-16 to 2026-09-20 at `FACTORY-01`, four for each product line, covering every status, completeness and resolution status and every reason code above. Replaces those batches if they are already there |
 | [`reset-data.sql`](reset-data.sql) | Removes them again. Leaves any other data alone |
 
-Both can be run twice safely. `processed_messages` and `audit_entries` are left empty.
+Both can be run twice safely. `processed_messages`, `audit_entries` and `lab_determinations` are left empty, so the sample's `Cleared` and `Failed` batches have no determination rows.
 
 ```bash
 mysql -h wonrichmysql.mysql.database.azure.com -u trc_app -p \
