@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using ProcessingService.Domain.Events;
+using Wonrich.Processing.Contracts.Events;
 using TraceabilityService.Api.Infrastructure.Persistence;
 using TraceabilityService.Domain.Entities;
 using TraceabilityService.Infrastructure.Kafka;

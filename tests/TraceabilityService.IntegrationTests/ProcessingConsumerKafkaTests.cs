@@ -5,7 +5,7 @@ using Confluent.Kafka.Admin;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using ProcessingService.Domain.Events;
+using Wonrich.Processing.Contracts.Events;
 using TraceabilityService.Api.Infrastructure.Persistence;
 using TraceabilityService.Application;
 using TraceabilityService.Domain.Entities;

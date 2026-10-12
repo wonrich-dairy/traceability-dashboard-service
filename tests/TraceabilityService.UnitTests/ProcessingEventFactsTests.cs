@@ -1,4 +1,4 @@
-using ProcessingService.Domain.Events;
+using Wonrich.Processing.Contracts.Events;
 using TraceabilityService.Application;
 
 namespace TraceabilityService.UnitTests;

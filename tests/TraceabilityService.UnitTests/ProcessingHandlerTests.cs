@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using ProcessingService.Domain.Events;
+using Wonrich.Processing.Contracts.Events;
 using TraceabilityService.Api.Infrastructure.Persistence;
 using TraceabilityService.Application;
 using TraceabilityService.Domain.Entities;
