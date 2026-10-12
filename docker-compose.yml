@@ -7,6 +7,8 @@ services:
       context: .
       args:
         GIT_SHA: ${GIT_SHA:-local}
+      # Restore pulls Wonrich.QualityLab.Contracts from GitHub Packages; see nuget.config
+      secrets: [github_packages_token]
     container_name: trc-api
     ports:
       - "${TRC_HOST_PORT:-5240}:8080"
@@ -30,3 +32,8 @@ services:
 networks:
   wonrich-net:
     external: true
+
+secrets:
+  github_packages_token:
+    # export GITHUB_PACKAGES_TOKEN=$(gh auth token) before building (token needs read:packages)
+    environment: GITHUB_PACKAGES_TOKEN

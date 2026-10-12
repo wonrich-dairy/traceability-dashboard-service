@@ -46,6 +46,13 @@ traceability-dashboard-service/
 - [.NET 10 SDK](https://dotnet.microsoft.com/download) and [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 - [`wonrich-infra`](https://github.com/wonrich-dairy/wonrich-infra) cloned next to this repository
 - Your public IP added to the `wonrichmysql` firewall (ask the DevOps member)
+- A GitHub token that can read the org's packages, for `Wonrich.QualityLab.Contracts` (see `nuget.config`).
+  `dotnet restore` and `docker compose build` both read it from `GITHUB_PACKAGES_TOKEN`:
+
+  ```bash
+  gh auth refresh -h github.com -s read:packages   # once
+  export GITHUB_PACKAGES_TOKEN=$(gh auth token)
+  ```
 
 ### 1. Start the shared Kafka broker
 

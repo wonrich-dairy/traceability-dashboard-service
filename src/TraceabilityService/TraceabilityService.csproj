@@ -20,6 +20,9 @@
     <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="9.0.0" />
     <PackageReference Include="prometheus-net.AspNetCore" Version="8.2.1" />
     <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.2.3" />
+    <!-- BatchCleared / BatchFailed contracts, as published by Quality Lab (tag contracts-v1.0.0 = schemaVersion v1).
+         From the org's GitHub Packages feed, see nuget.config. -->
+    <PackageReference Include="Wonrich.QualityLab.Contracts" Version="1.0.0" />
   </ItemGroup>
 
 </Project>
