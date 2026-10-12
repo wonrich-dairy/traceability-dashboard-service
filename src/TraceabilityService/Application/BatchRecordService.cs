@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using TraceabilityService.Api.Contracts;
 using TraceabilityService.Api.Infrastructure.Persistence;
+using TraceabilityService.Domain.Entities;
 
 namespace TraceabilityService.Application;
 
@@ -37,7 +38,13 @@ public class BatchRecordService(TraceabilityDbContext db) : IBatchRecordService
             .AsNoTracking()
             .SingleOrDefaultAsync(s => s.BatchId == batchId, cancellationToken);
 
-        return BatchRecordAssembler.Assemble(batch, events, snapshot, deviations);
+        // Superseded ones are left out: only the active determination sets the lab result.
+        var determinations = await _db.LabDeterminations
+            .AsNoTracking()
+            .Where(d => d.BatchId == batchId && !d.IsSuperseded)
+            .ToListAsync(cancellationToken);
+
+        return BatchRecordAssembler.Assemble(batch, events, snapshot, deviations, determinations);
     }
 
     public async Task<IReadOnlyList<BatchSummaryDto>> FindAsync(
@@ -74,6 +81,12 @@ public class BatchRecordService(TraceabilityDbContext db) : IBatchRecordService
                 Completeness = b.Completeness,
                 FirstEventAt = b.FirstEventAt,
                 LastEventAt = b.LastEventAt,
+                // The subquery runs in MySQL; LabResults.From maps its result as rows are read.
+                LabResult = LabResults.From(b.LabDeterminations
+                    .Where(d => !d.IsSuperseded)
+                    .OrderByDescending(d => d.DeterminedAt)
+                    .Select(d => (DeterminationResult?)d.Result)
+                    .FirstOrDefault()),
             })
             .ToListAsync(cancellationToken);
     }
