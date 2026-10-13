@@ -20,19 +20,12 @@ namespace TraceabilityService.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.CreateIndex(
-                name: "IX_timeline_events_RecordedBy_OccurredAt",
-                table: "timeline_events",
-                columns: new[] { "RecordedBy", "OccurredAt" });
-
-            migrationBuilder.CreateIndex(
-                name: "IX_audit_entries_Actor_OccurredAt",
-                table: "audit_entries",
-                columns: new[] { "Actor", "OccurredAt" });
-
-            // One statement each, so no BEGIN ... END and no DELIMITER in the migration script. IF NOT
-            // EXISTS (MySQL 8.0.29+) because the idempotent script runs them on every deploy, outside
-            // its guards (TriggerAwareMySqlMigrator).
+            // First: they are what fails without the TRIGGER privilege or log_bin_trust_function_creators,
+            // and MySQL commits each DDL statement at once, so failing before the indexes leaves nothing
+            // half-applied and the migration can simply run again once the server is fixed. One statement
+            // each, so no BEGIN ... END and no DELIMITER in the migration script. IF NOT EXISTS (MySQL
+            // 8.0.29+) because the idempotent script runs them on every deploy, outside its guards
+            // (TriggerAwareMySqlMigrator).
             migrationBuilder.Sql($"""
                 CREATE TRIGGER IF NOT EXISTS {NoUpdateTrigger} BEFORE UPDATE ON audit_entries FOR EACH ROW
                 SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'audit_entries is append-only: an entry cannot be changed.';
@@ -42,6 +35,16 @@ namespace TraceabilityService.Migrations
                 CREATE TRIGGER IF NOT EXISTS {NoDeleteTrigger} BEFORE DELETE ON audit_entries FOR EACH ROW
                 SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'audit_entries is append-only: an entry cannot be deleted.';
                 """);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_timeline_events_RecordedBy_OccurredAt",
+                table: "timeline_events",
+                columns: new[] { "RecordedBy", "OccurredAt" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_audit_entries_Actor_OccurredAt",
+                table: "audit_entries",
+                columns: new[] { "Actor", "OccurredAt" });
         }
 
         /// <inheritdoc />

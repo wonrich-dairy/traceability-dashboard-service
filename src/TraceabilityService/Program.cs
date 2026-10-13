@@ -98,7 +98,9 @@ if (app.Environment.IsDevelopment() || app.Environment.IsStaging())
     catch (Exception ex)
     {
         var logger = app.Services.GetRequiredService<ILogger<Program>>();
-        logger.LogWarning(ex, "Auto-migrate skipped: database not reachable at startup.");
+        // Unreachable, or a migration failed: e.g. creating the audit_entries triggers without
+        // log_bin_trust_function_creators (docs/database.md). The exception says which.
+        logger.LogWarning(ex, "Auto-migrate failed: the database is unreachable or a migration could not be applied.");
     }
 }
 

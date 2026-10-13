@@ -18,10 +18,14 @@ public class TraceabilityApiFactory : WebApplicationFactory<Program>, IAsyncLife
     public const string Issuer = "wonrich-auth";
     public const string Audience = "wonrich-services";
 
+    // Binary logging is on, as on Azure, so the app's user (no SUPER) can create the audit_entries
+    // triggers only with log_bin_trust_function_creators on: the server parameter docs/database.md
+    // asks for in Azure, set the same way here.
     private readonly MySqlContainer _mysql = new MySqlBuilder("mysql:8.0")
         .WithDatabase("traceability")
         .WithUsername("trc_app")
         .WithPassword("trc_test_pwd")
+        .WithCommand("--log-bin-trust-function-creators=1")
         .Build();
 
     public async Task InitializeAsync() => await _mysql.StartAsync();
