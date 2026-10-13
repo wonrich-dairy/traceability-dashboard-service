@@ -7,18 +7,19 @@ using TraceabilityService.Application;
 namespace TraceabilityService.Api.Controllers;
 
 /// <summary>
-/// The unified batch record (SCRUM-133). Quality Control Officers and System
-/// Administrators only: no token is 401, any other role is 403.
+/// The unified batch record (SCRUM-133) and its backward trace (SCRUM-134). Quality
+/// Control Officers and System Administrators only: no token is 401, any other role is 403.
 /// </summary>
 [ApiController]
 [Route("api/batches")]
 [Authorize(Policy = TraceabilityPolicies.QualityControl)]
 [ProducesResponseType(StatusCodes.Status401Unauthorized)]
 [ProducesResponseType(StatusCodes.Status403Forbidden)]
-public class BatchesController(IBatchRecordService batches) : ControllerBase
+public class BatchesController(IBatchRecordService batches, IBatchTraceService traces) : ControllerBase
 {
     private const string ProblemJson = "application/problem+json";
     private readonly IBatchRecordService _batches = batches;
+    private readonly IBatchTraceService _traces = traces;
 
     /// <summary>
     /// The full record for one batch: its timeline with each event's deviations, and
@@ -47,6 +48,38 @@ public class BatchesController(IBatchRecordService batches) : ControllerBase
         }
 
         return Ok(batch);
+    }
+
+    /// <summary>
+    /// The backward trace for one batch: its four checkpoints, MCC to Quality Lab, each
+    /// within spec, deviated or missing data, the checkpoint the first deviation came
+    /// from, its holds, and the tanks and societies its milk came from.
+    /// </summary>
+    /// <remarks>
+    /// The origin is the earliest checkpoint in stage order that deviated, not the
+    /// deviation with the earliest time. The same data always gives the same trace.
+    /// </remarks>
+    /// <param name="batchId">Processing's batch code, e.g. 262-FM-B.</param>
+    /// <response code="200">The trace.</response>
+    /// <response code="404">No batch carries that ID.</response>
+    [HttpGet("{batchId}/trace")]
+    [ProducesResponseType(typeof(BatchTraceResponse), StatusCodes.Status200OK, "application/json")]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound, ProblemJson)]
+    public async Task<ActionResult<BatchTraceResponse>> GetTrace(
+        string batchId,
+        CancellationToken cancellationToken)
+    {
+        var trace = await _traces.GetAsync(batchId, cancellationToken);
+
+        if (trace is null)
+        {
+            return Problem(
+                title: "Batch not found",
+                detail: $"No batch exists with batch ID '{batchId}'.",
+                statusCode: StatusCodes.Status404NotFound);
+        }
+
+        return Ok(trace);
     }
 
     /// <summary>

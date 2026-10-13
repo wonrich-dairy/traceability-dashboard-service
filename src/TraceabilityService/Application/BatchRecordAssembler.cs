@@ -11,7 +11,7 @@ namespace TraceabilityService.Application;
 /// </summary>
 public static class BatchRecordAssembler
 {
-    private static readonly Checkpoint[] StageOrder =
+    internal static readonly Checkpoint[] StageOrder =
         [Checkpoint.Mcc, Checkpoint.Intake, Checkpoint.Processing, Checkpoint.Lab];
 
     // Returns null when there is no batch, which the caller turns into a 404.
@@ -42,6 +42,7 @@ public static class BatchRecordAssembler
             EventRecords(eventList, Checkpoint.Lab),
         ];
 
+        var hasData = records.Select(r => r.Count > 0).ToArray();
         var deviationsByCheckpoint = deviations
             .OrderBy(d => d.OccurredAt)
             .ThenBy(d => d.Id)
@@ -72,7 +73,7 @@ public static class BatchRecordAssembler
             Checkpoints = [.. StageOrder.Select((checkpoint, index) => new CheckpointSectionDto
             {
                 Checkpoint = checkpoint,
-                State = StateOf(index, records, batch.Status),
+                State = StateOf(index, hasData, batch.Status),
                 FirstRecordedAt = records[index].Count == 0 ? null : records[index].Min(r => r.OccurredAt),
                 LastRecordedAt = records[index].Count == 0 ? null : records[index].Max(r => r.OccurredAt),
                 Records = records[index],
@@ -87,29 +88,32 @@ public static class BatchRecordAssembler
                 })],
             })],
 
-            Links = payload is null ? null : new BatchLinksDto
-            {
-                Dispatch = new DispatchLinkDto
-                {
-                    Reference = payload.Dispatch.Reference,
-                    DispatchedAt = payload.Dispatch.DispatchedAt,
-                    BowserRegistration = payload.Dispatch.BowserRegistration,
-                    TotalLitres = payload.Dispatch.TotalLitres,
-                },
-                Tanks = [.. payload.Tanks.Select(t => new TankLinkDto
-                {
-                    Code = t.Code,
-                    QuantityDrawnLitres = t.QuantityDrawnLitres,
-                    Consignments = [.. t.Consignments.Select(c => new ConsignmentLinkDto
-                    {
-                        Reference = c.Reference,
-                        VolumeLitres = c.VolumeLitres,
-                        Society = new SocietyLinkDto { Code = c.Society.Code, Name = c.Society.Name },
-                    })],
-                })],
-            },
+            Links = payload is null ? null : LinksOf(payload),
         };
     }
+
+    // In the snapshot's order: nothing here sorts tanks, consignments or societies.
+    internal static BatchLinksDto LinksOf(UpstreamSnapshotPayload payload) => new()
+    {
+        Dispatch = new DispatchLinkDto
+        {
+            Reference = payload.Dispatch.Reference,
+            DispatchedAt = payload.Dispatch.DispatchedAt,
+            BowserRegistration = payload.Dispatch.BowserRegistration,
+            TotalLitres = payload.Dispatch.TotalLitres,
+        },
+        Tanks = [.. payload.Tanks.Select(t => new TankLinkDto
+        {
+            Code = t.Code,
+            QuantityDrawnLitres = t.QuantityDrawnLitres,
+            Consignments = [.. t.Consignments.Select(c => new ConsignmentLinkDto
+            {
+                Reference = c.Reference,
+                VolumeLitres = c.VolumeLitres,
+                Society = new SocietyLinkDto { Code = c.Society.Code, Name = c.Society.Name },
+            })],
+        })],
+    };
 
     /// <summary>
     /// Recorded when the checkpoint has data. Otherwise:
@@ -120,13 +124,17 @@ public static class BatchRecordAssembler
     /// <item>Processing and Lab are NoDataReceived when a later checkpoint has data or the
     /// batch's status is past this point, and NotYetReached when neither.</item>
     /// </list>
+    /// The backward trace (SCRUM-134) uses the same rule, so the two endpoints never disagree
+    /// on whether a checkpoint is a gap.
     /// </summary>
-    private static CheckpointState StateOf(
+    /// <param name="index">The checkpoint, as an index into StageOrder.</param>
+    /// <param name="hasData">Whether each checkpoint has data, in StageOrder.</param>
+    internal static CheckpointState StateOf(
         int index,
-        List<CheckpointRecordDto>[] records,
+        IReadOnlyList<bool> hasData,
         BatchStatus status)
     {
-        if (records[index].Count > 0)
+        if (hasData[index])
         {
             return CheckpointState.Recorded;
         }
@@ -136,7 +144,7 @@ public static class BatchRecordAssembler
             return CheckpointState.NoDataReceived;
         }
 
-        var laterHasData = records.Skip(index + 1).Any(r => r.Count > 0);
+        var laterHasData = hasData.Skip(index + 1).Any(h => h);
         return laterHasData || index <= LastCheckpointPassed(status)
             ? CheckpointState.NoDataReceived
             : CheckpointState.NotYetReached;

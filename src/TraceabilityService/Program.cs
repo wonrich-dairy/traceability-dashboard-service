@@ -34,6 +34,7 @@ builder.Services.AddDbContext<TraceabilityDbContext>(options =>
 
 // ── Read model queries ───────────────────────────────────────────────────────
 builder.Services.AddScoped<IBatchRecordService, BatchRecordService>();
+builder.Services.AddScoped<IBatchTraceService, BatchTraceService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
 
 // ── Kafka consumers ──────────────────────────────────────────────────────────
