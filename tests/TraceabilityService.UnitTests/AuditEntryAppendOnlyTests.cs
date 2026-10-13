@@ -128,7 +128,7 @@ public class AuditEntryAppendOnlyTests
     {
         var names = typeof(IAuditTrailService).GetMethods().Select(m => m.Name).ToList();
 
-        Assert.Equal(["RecordBatchOpenedAsync", "SearchAsync"], names.Order());
+        Assert.Equal(["RecordAdminActionAsync", "RecordBatchOpenedAsync", "SearchAsync"], names.Order());
     }
 
     private static AuditEntry Entry() => new()

@@ -17,10 +17,14 @@ public static class AuditActions
     public const string BatchRecordOpened = "BatchRecordOpened";
     public const string BatchTraceOpened = "BatchTraceOpened";
     public const string BatchSearchExported = BatchSearchService.ExportAction;
+
+    // Administrative operations (SCRUM-140)
+    public const string DeadLetterReplayed = "DeadLetterReplayed";
+    public const string ProjectionRebuilt = "ProjectionRebuilt";
 }
 
 /// <summary>
-/// Which actions the consolidated audit trail covers and which it does not (SCRUM-138). The trail
+/// Which actions the consolidated audit trail covers and which it does not (SCRUM-138, SCRUM-140). The trail
 /// is built from the events Traceability consumes, the upstream snapshot it caches and its own
 /// audit_entries, so it covers exactly the actions those carry; anything done upstream without an
 /// event is not in it. Served by GET /api/audit/coverage and kept in step with docs/audit-trail.md.
@@ -57,6 +61,10 @@ public static class AuditCoverage
             "A batch's backward trace opened in Traceability (GET /api/batches/{batchId}/trace). User: the caller; time: when."),
         Own(AuditActions.BatchSearchExported,
             "A batch search exported as CSV. User: the caller; time: when. Details: the filters, row count and the caller's role."),
+        Own(AuditActions.DeadLetterReplayed,
+            "A dead-letter message replayed to its source topic (POST /api/admin/dead-letters/replay). User: the caller; time: when. Details: consumer group, target topic, partition, offset, correlation ID and duplicate status."),
+        Own(AuditActions.ProjectionRebuilt,
+            "The Traceability projection rebuilt from event history (POST /api/admin/rebuild). User: the caller; time: when. Details: consumer group, events processed, snapshots resolved, batch count, duration, consumer-offset alignment and store-cutover status."),
     ];
 
     public static readonly IReadOnlyList<UncoveredActionDto> NotCovered =
@@ -72,7 +80,7 @@ public static class AuditCoverage
         Gap("Processing events for a dispatch that has no batch yet",
             "They are kept until a batch is made from the dispatch, and appear then, under that batch, with their original time and user."),
         Gap("Events dead-lettered after their retries ran out",
-            "They were never applied, so they are not on any timeline. They are on the consumer's dead-letter topic."),
+            "They were never applied, so they are not on any timeline until inspected and replayed via POST /api/admin/dead-letters/replay."),
         Gap("Users, roles and society master data",
             "Managed in the Auth Service and the MCC and Intake Service, which publish no events to Traceability."),
         Gap("Reading in Traceability other than opening a batch or exporting",

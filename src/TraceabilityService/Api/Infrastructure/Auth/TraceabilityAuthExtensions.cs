@@ -74,7 +74,10 @@ namespace TraceabilityService.Api.Infrastructure
                     .RequireRole(WonrichRoles.QualityControlOfficer, WonrichRoles.SystemAdministrator))
                 .AddPolicy(TraceabilityPolicies.AuditTrail, policy => policy
                     .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme)
-                    .RequireRole(WonrichRoles.SystemAdministrator, WonrichRoles.QualityControlOfficer));
+                    .RequireRole(WonrichRoles.SystemAdministrator, WonrichRoles.QualityControlOfficer))
+                .AddPolicy(TraceabilityPolicies.AdminOnly, policy => policy
+                    .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme)
+                    .RequireRole(WonrichRoles.SystemAdministrator));
             return services;
         }
     }

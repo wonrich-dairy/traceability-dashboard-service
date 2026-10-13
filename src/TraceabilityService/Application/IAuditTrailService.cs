@@ -19,4 +19,13 @@ public interface IAuditTrailService
         string batchId,
         AuditRequester requester,
         CancellationToken cancellationToken = default);
+
+    // Adds an audit entry for administrative operations (DeadLetterReplayed, ProjectionRebuilt).
+    Task RecordAdminActionAsync(
+        string action,
+        string entityType,
+        string entityId,
+        object? details,
+        AuditRequester requester,
+        CancellationToken cancellationToken = default);
 }

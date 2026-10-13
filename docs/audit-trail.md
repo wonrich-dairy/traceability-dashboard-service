@@ -33,6 +33,8 @@ Every entry has a time (UTC), a user ID (null only when the upstream service rec
 | `BatchRecordOpened` | none | Traceability | Who opened the batch record (`GET /api/batches/{batchId}`), and when |
 | `BatchTraceOpened` | none | Traceability | Who opened the backward trace (`GET /api/batches/{batchId}/trace`), and when |
 | `BatchSearchExported` | none | Traceability | Who exported a batch search as CSV, and when, with the filters, row count and role |
+| `DeadLetterReplayed` | none | Traceability | Who replayed a dead-letter message (`POST /api/admin/dead-letters/replay`), and when, with consumer group, target topic, partition, offset, correlation ID and duplicate status |
+| `ProjectionRebuilt` | none | Traceability | Who rebuilt the projection store (`POST /api/admin/rebuild`), and when, with consumer group, events processed, snapshots resolved, batches count, duration and switchover status |
 
 ## Not covered
 
@@ -43,7 +45,7 @@ Every entry has a time (UTC), a user ID (null only when the upstream service rec
 | MCC and intake actions of a batch whose snapshot has not resolved | They appear once the snapshot resolves. A snapshot that ends `Unavailable` never gives them |
 | Factory arrival, and the gate quality panel's own time and user | The snapshot records when the milk arrived, but not who recorded it; the panel is part of the consignment and has no time or user of its own, so `ConsignmentRegistered` stands for it |
 | Processing events for a dispatch that has no batch yet | Kept until a batch is made from the dispatch (`pending_dispatch_events`), then shown under that batch with their original time and user |
-| Events dead-lettered after their retries ran out | Never applied, so on no timeline. They are on the consumer's dead-letter topic |
+| Events dead-lettered after their retries ran out | Never applied, so on no timeline until inspected and replayed via `POST /api/admin/dead-letters/replay` |
 | Users, roles and society master data | Managed in the Auth Service and the MCC and Intake Service, which publish no events to Traceability |
 | Reading in Traceability other than opening a batch or exporting | Batch search pages, lookups by dispatch or batch reference, the dashboard, and reading this audit trail and coverage list are not audited |
 | Traceability's own read model updates | Batch status, trace completeness, the daily aggregates and snapshot retries are derived from the covered events, so they are not audited separately |

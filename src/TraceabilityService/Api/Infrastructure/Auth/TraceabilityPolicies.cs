@@ -18,4 +18,10 @@ public static class TraceabilityPolicies
     /// who may read the audit trail can change without widening batch record access.
     /// </summary>
     public const string AuditTrail = "AuditTrail";
+
+    /// <summary>
+    /// Administrative operations (SCRUM-140): System Administrators only.
+    /// Used for dead-letter inspection and replay, and projection rebuilds.
+    /// </summary>
+    public const string AdminOnly = "AdminOnly";
 }

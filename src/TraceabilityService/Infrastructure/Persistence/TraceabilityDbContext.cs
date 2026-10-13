@@ -25,6 +25,24 @@ public class TraceabilityDbContext(DbContextOptions<TraceabilityDbContext> optio
     {
         base.OnModelCreating(modelBuilder);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(TraceabilityDbContext).Assembly);
+
+        if (!ProjectionTableScope.IncludeAuditEntries)
+        {
+            modelBuilder.Ignore<AuditEntry>();
+        }
+
+        var prefix = ProjectionTableScope.TablePrefix;
+        if (prefix.Length > 0)
+        {
+            foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+            {
+                var tableName = entityType.GetTableName();
+                if (tableName is not null && entityType.ClrType != typeof(AuditEntry))
+                {
+                    entityType.SetTableName(prefix + tableName);
+                }
+            }
+        }
     }
 
     // audit_entries is append-only (SCRUM-138): an entry is added and never changed or removed.

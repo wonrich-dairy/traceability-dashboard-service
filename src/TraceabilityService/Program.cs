@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -11,6 +12,7 @@ using TraceabilityService.Api.Infrastructure;
 using TraceabilityService.Api.Infrastructure.Persistence;
 using TraceabilityService.Application;
 using TraceabilityService.Health;
+using TraceabilityService.Infrastructure.Kafka;
 using TraceabilityService.Observability;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -36,6 +38,7 @@ if (string.IsNullOrWhiteSpace(connectionString))
 // audit_entries triggers in it (SCRUM-138).
 builder.Services.AddDbContext<TraceabilityDbContext>(options =>
     options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 46)))
+        .ReplaceService<IModelCacheKeyFactory, TraceabilityModelCacheKeyFactory>()
         .ReplaceService<IMigrator, TriggerAwareMySqlMigrator>());
 
 // ── Read model queries ───────────────────────────────────────────────────────
@@ -44,6 +47,8 @@ builder.Services.AddScoped<IBatchTraceService, BatchTraceService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
 builder.Services.AddScoped<IBatchSearchService, BatchSearchService>();
 builder.Services.AddScoped<IAuditTrailService, AuditTrailService>();
+builder.Services.AddScoped<IDeadLetterService, KafkaDeadLetterService>();
+builder.Services.AddScoped<IProjectionRebuildService, ProjectionRebuildService>();
 
 // ── Kafka consumers ──────────────────────────────────────────────────────────
 // Each one: a transaction per event with a duplicate check, retries, then dead-letters, and
