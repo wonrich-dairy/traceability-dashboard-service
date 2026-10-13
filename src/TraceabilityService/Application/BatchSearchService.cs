@@ -59,7 +59,7 @@ public class BatchSearchService(TraceabilityDbContext db, FactoryCalendar calend
     }
 
     public async Task<BatchExport> ExportAsync(
-        BatchSearchFilter filter, BatchExportRequester requester, CancellationToken cancellationToken = default)
+        BatchSearchFilter filter, AuditRequester requester, CancellationToken cancellationToken = default)
     {
         var summaries = await Newest(Matching(filter))
             .Select(BatchRecordService.ToSummary)

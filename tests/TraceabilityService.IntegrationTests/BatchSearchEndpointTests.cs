@@ -440,11 +440,10 @@ public class BatchSearchEndpointTests(TraceabilityApiFactory factory, ITestOutpu
     {
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<TraceabilityDbContext>();
-        // Cascades to the snapshots, events, determinations and deviations.
+        // Cascades to the snapshots, events, determinations and deviations. The exports' audit
+        // entries stay: audit_entries is append-only (SCRUM-138), and each test finds its own by
+        // correlation ID, so they do not get in the way.
         await db.BatchRecords.Where(b => b.Facility.StartsWith("TEST-SEARCH")).ExecuteDeleteAsync();
-        await db.AuditEntries
-            .Where(a => a.Action == BatchSearchService.ExportAction && (a.EntityId.Contains("TEST-SEARCH") || a.CorrelationId!.StartsWith("test-search-")))
-            .ExecuteDeleteAsync();
     }
 
     // A minimal RFC 4180 reader: quoted cells, doubled quotes, CRLF rows. Skips the BOM.

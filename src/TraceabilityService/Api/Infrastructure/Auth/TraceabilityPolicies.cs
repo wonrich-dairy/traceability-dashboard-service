@@ -11,4 +11,11 @@ public static class TraceabilityPolicies
     /// Officers and System Administrators. Any other role is refused with 403.
     /// </summary>
     public const string QualityControl = "QualityControl";
+
+    /// <summary>
+    /// Read the consolidated audit trail and its coverage list (SCRUM-138): System Administrators
+    /// and Quality Control Officers. Its own policy, though the roles are the same today, so
+    /// who may read the audit trail can change without widening batch record access.
+    /// </summary>
+    public const string AuditTrail = "AuditTrail";
 }

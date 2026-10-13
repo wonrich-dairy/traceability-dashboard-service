@@ -54,7 +54,7 @@ NuGet packages, direct and transitive, in all three projects. High and Critical 
 | Unit tests | `tests/TraceabilityService.UnitTests`. A failing test fails the job, and nothing deploys |
 | Integration tests | `tests/TraceabilityService.IntegrationTests`: the real API against a throwaway MySQL (Testcontainers). Also proves the migrations apply to an empty database |
 | Test results, coverage | `.trx` results as a check, merged coverage report, PR comment, **60% line coverage** gate |
-| Migration script | `dotnet ef migrations script --idempotent`, uploaded as the `migration-script` artifact |
+| Migration script | `dotnet ef migrations script --idempotent`, uploaded as the `migration-script` artifact. MySQL cannot create a trigger inside the stored procedure that guards each statement, so `TriggerAwareMySqlMigrator` puts trigger statements (`CREATE TRIGGER IF NOT EXISTS`) unguarded at the end of the script, where they run harmlessly on every deploy. An integration test runs the script twice on an empty database |
 | Docker build, image scan | Trivy; High / Critical with a fix available fail |
 
 ### 3. Deploy to staging (push to `develop`)

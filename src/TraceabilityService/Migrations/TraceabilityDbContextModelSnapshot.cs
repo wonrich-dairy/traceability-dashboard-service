@@ -64,6 +64,8 @@ namespace TraceabilityService.Migrations
 
                     b.HasIndex("OccurredAt");
 
+                    b.HasIndex("Actor", "OccurredAt");
+
                     b.HasIndex("EntityType", "EntityId", "OccurredAt");
 
                     b.ToTable("audit_entries", (string)null);
@@ -479,6 +481,8 @@ namespace TraceabilityService.Migrations
                         .IsUnique();
 
                     b.HasIndex("BatchId", "OccurredAt");
+
+                    b.HasIndex("RecordedBy", "OccurredAt");
 
                     b.ToTable("timeline_events", (string)null);
                 });

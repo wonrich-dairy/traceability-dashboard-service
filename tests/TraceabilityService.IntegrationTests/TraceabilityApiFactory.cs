@@ -1,3 +1,5 @@
+using System.Text;
+using DotNet.Testcontainers.Containers;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
@@ -23,6 +25,27 @@ public class TraceabilityApiFactory : WebApplicationFactory<Program>, IAsyncLife
         .Build();
 
     public async Task InitializeAsync() => await _mysql.StartAsync();
+
+    /// <summary>
+    /// Runs a SQL script with the mysql command-line client inside the container, as root, against
+    /// <paramref name="database"/> (created if missing): the way the pipeline applies the migration
+    /// script to production. The app's user can only reach its own database, hence root.
+    /// </summary>
+    public async Task<ExecResult> RunScriptAsync(string database, string script)
+    {
+        var path = $"/tmp/{Guid.NewGuid():N}.sql";
+        await _mysql.CopyAsync(Encoding.UTF8.GetBytes(script), path);
+        return await _mysql.ExecAsync(
+        [
+            "sh", "-c",
+            $"mysql -uroot -p\"$MYSQL_ROOT_PASSWORD\" -e 'CREATE DATABASE IF NOT EXISTS `{database}`' "
+            + $"&& mysql -uroot -p\"$MYSQL_ROOT_PASSWORD\" {database} < {path}",
+        ]);
+    }
+
+    /// <summary>Runs one statement as root against <paramref name="database"/>, for checking what a script left.</summary>
+    public Task<ExecResult> QueryAsync(string database, string sql) =>
+        _mysql.ExecAsync(["sh", "-c", $"mysql -uroot -p\"$MYSQL_ROOT_PASSWORD\" -N -B {database} -e \"{sql}\""]);
 
     async Task IAsyncLifetime.DisposeAsync() => await _mysql.DisposeAsync().AsTask();
 

@@ -45,6 +45,13 @@ SHOW GRANTS FOR 'trc_app'@'%';
 
 As `trc_app`, `USE quality_lab`, `USE mccdb` and `USE processingdb` all fail with `Access denied`. The same holds for `trc_app_prod`.
 
+`ALL PRIVILEGES` includes `TRIGGER`, which the migration `MakeAuditEntriesAppendOnly` needs to make `audit_entries` append-only (SCRUM-138). Azure Database for MySQL has binary logging on, and then MySQL lets a user without `SUPER` create a trigger only when the server parameter **`log_bin_trust_function_creators`** is `ON`. Set it under **Server parameters** in the portal (it takes effect without a restart) **before deploying that migration**; otherwise the migration step fails with error 1419. Check with:
+
+```sql
+SHOW GLOBAL VARIABLES LIKE 'log_bin_trust_function_creators';  -- ON
+SHOW TRIGGERS LIKE 'audit_entries';                             -- audit_entries_no_update, audit_entries_no_delete
+```
+
 The server administrator login is **not** used by the application. The server accepts connections only over SSL (`SslMode=Required`).
 
 ### Network access

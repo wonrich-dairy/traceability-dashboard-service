@@ -41,5 +41,11 @@ public class AuditEntryConfiguration : IEntityTypeConfiguration<AuditEntry>
         builder.HasIndex(a => new { a.EntityType, a.EntityId, a.OccurredAt });
 
         builder.HasIndex(a => a.OccurredAt);
+
+        // The audit trail's user filter (SCRUM-138).
+        builder.HasIndex(a => new { a.Actor, a.OccurredAt });
+
+        // No UPDATE or DELETE: the table's triggers refuse both (migration
+        // MakeAuditEntriesAppendOnly), and TraceabilityDbContext refuses them before saving.
     }
 }

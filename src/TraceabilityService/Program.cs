@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Prometheus;
@@ -31,14 +32,18 @@ if (string.IsNullOrWhiteSpace(connectionString))
 
 // Pinned rather than AutoDetect so startup doesn't need a reachable server and
 // every environment gets the same SQL. Keep in step with the deployed MySQL.
+// TriggerAwareMySqlMigrator keeps the idempotent migration script runnable with the
+// audit_entries triggers in it (SCRUM-138).
 builder.Services.AddDbContext<TraceabilityDbContext>(options =>
-    options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 46))));
+    options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 46)))
+        .ReplaceService<IMigrator, TriggerAwareMySqlMigrator>());
 
 // ── Read model queries ───────────────────────────────────────────────────────
 builder.Services.AddScoped<IBatchRecordService, BatchRecordService>();
 builder.Services.AddScoped<IBatchTraceService, BatchTraceService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
 builder.Services.AddScoped<IBatchSearchService, BatchSearchService>();
+builder.Services.AddScoped<IAuditTrailService, AuditTrailService>();
 
 // ── Kafka consumers ──────────────────────────────────────────────────────────
 // Each one: a transaction per event with a duplicate check, retries, then dead-letters, and

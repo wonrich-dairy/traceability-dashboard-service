@@ -2,7 +2,8 @@ namespace TraceabilityService.Domain.Entities;
 
 /// <summary>
 /// Who did what to which record, and when. Not linked to the batch tables by a
-/// foreign key, so entries outlive the rows they describe.
+/// foreign key, so entries outlive the rows they describe. Append-only: an entry is
+/// never changed or removed once saved (SCRUM-138).
 /// </summary>
 public class AuditEntry
 {

@@ -191,11 +191,13 @@ The MCC and Intake Service accepts the shared Auth Service tokens, so service-to
 | GET | `/swagger` | Swagger UI, Development and Staging only (anonymous). See [API documentation](#api-documentation-swagger) |
 | GET | `/swagger/v1/swagger.json` | The OpenAPI document the UI reads, Development and Staging only (anonymous) |
 | GET | `/api/me` | The caller's user ID, name, role and facility from the JWT (requires a token) |
-| GET | `/api/batches/{batchId}` | One batch's full record: summary, upstream status, four checkpoint sections (MCC, Factory Intake, Processing, Quality Lab) each with a state, records and deviations, and links from dispatch to tanks, consignments and societies. 404 problem response if no batch has that ID (QualityControlOfficer or SystemAdministrator) |
-| GET | `/api/batches/{batchId}/trace` | The batch's backward trace (SCRUM-134): its four checkpoints in stage order, each `WithinSpec`, `Deviation`, `MissingData` or `NotYetReached`, the checkpoint the first deviation came from (`originCheckpoint`, `origin`), its Processing holds, and its tanks and societies in the upstream snapshot's order. 404 problem response if no batch has that ID (QualityControlOfficer or SystemAdministrator) |
+| GET | `/api/batches/{batchId}` | One batch's full record (audited as `BatchRecordOpened`): summary, upstream status, four checkpoint sections (MCC, Factory Intake, Processing, Quality Lab) each with a state, records and deviations, and links from dispatch to tanks, consignments and societies. 404 problem response if no batch has that ID (QualityControlOfficer or SystemAdministrator) |
+| GET | `/api/batches/{batchId}/trace` | The batch's backward trace (SCRUM-134, audited as `BatchTraceOpened`): its four checkpoints in stage order, each `WithinSpec`, `Deviation`, `MissingData` or `NotYetReached`, the checkpoint the first deviation came from (`originCheckpoint`, `origin`), its Processing holds, and its tanks and societies in the upstream snapshot's order. 404 problem response if no batch has that ID (QualityControlOfficer or SystemAdministrator) |
 | GET | `/api/batches?dispatchRef=…` or `?batchReference=WR-…` | Summaries of the matching batches, oldest first. One dispatch can feed several batches, so this is always a list; no match is an empty list, not a 404. With both filters, a batch must match both; with neither, 400 (QualityControlOfficer or SystemAdministrator) |
 | GET | `/api/batches/search?…&page=…` | Batch search (SCRUM-139): the batches matching every filter given, 50 to a page, newest first, with `totalCount` and `totalPages`. Filters: `status`, `productLine`, `from`/`to` (factory days of the batch's first event), `society` (code or name), `tank`, `user`, `reasonCode`, `facility`. Each batch appears once, however many tanks, societies, users or reasons it has. Each row adds its tanks, societies, users, reason codes and five lab parameters; one its product line does not measure is `NotApplicable`. No match is a 200 with an empty page and a `message`. See [Batch search and export](#batch-search-and-export) (QualityControlOfficer or SystemAdministrator) |
 | GET | `/api/batches/export?…` | The same filters, every matching batch as CSV, not only one page. No empty cells, a file name carrying the filters and the export date, and an `audit_entries` row per export. `X-Batch-Count` gives the row count; no match is the heading row alone (QualityControlOfficer or SystemAdministrator) |
+| GET | `/api/audit?…&page=…` | Consolidated audit trail (SCRUM-138): who recorded or did what, and when, across every facility, 50 to a page, newest first. Each entry has time, user, action, checkpoint, batch, facility, source and reference. Filters: `user`, `action`, `from`/`to` (factory days), `batchId`. See [Audit trail](#audit-trail) (SystemAdministrator or QualityControlOfficer) |
+| GET | `/api/audit/coverage` | Which actions the audit trail covers and which it does not, with the reason (SystemAdministrator or QualityControlOfficer) |
 | GET | `/api/dashboard/summary` | Pending, cleared, failed and on-hold counts for today and for the range, and deviations per checkpoint over the range (QualityControlOfficer or SystemAdministrator) |
 | GET | `/api/dashboard/deviations` | Deviations per checkpoint over the range, always four in stage order: the summary's figures on their own, as `checkpoints` (QualityControlOfficer or SystemAdministrator) |
 | GET | `/api/dashboard/trend` | Per day and product line: batch, cleared and failed counts and `failRate` = failed ÷ batches, pending and on-hold batches included, so a day still being decided reads low (QualityControlOfficer or SystemAdministrator) |
@@ -303,6 +305,12 @@ The file is UTF-8 with a byte order mark, so Excel reads Sinhala and Tamil socie
 
 Each export writes an `audit_entries` row before the file is returned: `Action` `BatchSearchExported`, `EntityType` `BatchSearch`, `EntityId` the file name, `Actor` the token's user ID, the correlation ID, and `Details` with the filters, the row count and the caller's role. A refused request (401 or 403) is not audited, since nothing was exported. CORS exposes `Content-Disposition` and `X-Batch-Count`, so the frontend can read the file name and count.
 
+### Audit trail
+
+`GET /api/audit` (SCRUM-138) is read at query time from three places: the events Traceability consumed (`timeline_events`), the records in each resolved upstream snapshot (consignment registrations, the dispatch, the intake screening), and `audit_entries`, Traceability's own record of batches opened and exports. So it covers the actions that have events, and no others: an edit made in another service without an event is not in it. [docs/audit-trail.md](docs/audit-trail.md) lists what is and is not covered, as does `GET /api/audit/coverage`.
+
+Opening a batch record or trace writes an `audit_entries` row before the response, as an export does; a 404 or a refused request writes none. `audit_entries` is append-only: there is no endpoint to change an entry, the DbContext refuses to save one changed or removed, and the table's triggers refuse any `UPDATE` or `DELETE`. Deploying the triggers needs `log_bin_trust_function_creators = ON` on the Azure server, see [docs/database.md](docs/database.md).
+
 ## Database
 
 EF Core migrations are applied on startup in Development and Staging. Production applies the pipeline's idempotent migration script before each deploy.
@@ -317,6 +325,7 @@ The tables, their indexes, the coded values and the sample data are described in
 |---|---|
 | CI/CD pipeline, environments, rollback | [docs/ci-cd-pipeline.md](docs/ci-cd-pipeline.md) |
 | Database schema, coded values, sample data | [docs/schema.md](docs/schema.md) |
+| Audit trail: what it covers and what it does not | [docs/audit-trail.md](docs/audit-trail.md) |
 | Tests and coverage | [docs/testing.md](docs/testing.md) |
 | Security scanning | [docs/security-scanning.md](docs/security-scanning.md) |
 | Performance test | [docs/performance-testing.md](docs/performance-testing.md) |
