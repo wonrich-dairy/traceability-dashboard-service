@@ -16,7 +16,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers()
     .AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
-builder.Services.AddOpenApi();
+// ── Swagger (SCRUM-125, shared template from SCRUM-49): /swagger, off in Production ──
+builder.Services.AddTraceabilitySwagger();
 
 // ── Database (MySQL) ─────────────────────────────────────────────────────────
 var connectionString = builder.Configuration.GetConnectionString("TraceabilityDb");
@@ -92,12 +93,8 @@ if (app.Environment.IsDevelopment() || app.Environment.IsStaging())
     }
 }
 
-if (app.Environment.IsDevelopment())
-{
-    // Dev only: Swagger UI fetches the spec without a token
-    app.MapOpenApi().AllowAnonymous();
-    app.UseSwaggerUI(options => options.SwaggerEndpoint("/openapi/v1.json", "Traceability Service v1"));
-}
+// Development and Staging only; ahead of authorization so the page and spec load without a token.
+app.UseTraceabilitySwagger();
 
 app.UseCors("TraceabilityCors");
 app.UseAuthentication();
@@ -128,12 +125,13 @@ app.MapHealthChecks("/health", new HealthCheckOptions
 app.MapMetrics().AllowAnonymous();
 
 // Deployed commit, baked into the image as GIT_SHA. The pipeline waits for this to show the new SHA.
+// Operational, like /health and /metrics, so kept out of the API's Swagger document.
 app.MapGet("/version", () => Results.Ok(new
 {
     sha = Environment.GetEnvironmentVariable("GIT_SHA") ?? "local"
-})).AllowAnonymous();
+})).AllowAnonymous().ExcludeFromDescription();
 
-// Root descriptor
+// Root descriptor. JSON rather than a redirect to /swagger, because Swagger is off in Production.
 app.MapGet("/", (IWebHostEnvironment env) => Results.Ok(new
 {
     service = "Wonrich Traceability Service",
@@ -141,7 +139,8 @@ app.MapGet("/", (IWebHostEnvironment env) => Results.Ok(new
     health = "/health",
     version = "/version",
     metrics = "/metrics",
-})).AllowAnonymous();
+    swagger = env.IsProduction() ? null : "/swagger",
+})).AllowAnonymous().ExcludeFromDescription();
 
 app.MapControllers();
 

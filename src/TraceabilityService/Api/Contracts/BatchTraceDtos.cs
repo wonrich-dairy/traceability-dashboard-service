@@ -11,49 +11,71 @@ namespace TraceabilityService.Api.Contracts;
 /// </summary>
 public class BatchTraceResponse : BatchSummaryDto
 {
-    // True when any checkpoint reported a deviation.
+    /// <summary>
+    /// True when any checkpoint reported a deviation.
+    /// </summary>
     public bool HasDeviation{get; set;}
 
-    // The earliest checkpoint in stage order (MCC, Intake, Processing, Lab) with a
-    // deviation, whatever the times on the deviations: a deviation at the MCC is the
-    // origin even when Processing deviated earlier by the clock. Null with no deviation.
+    /// <summary>
+    /// The earliest checkpoint in stage order (MCC, Intake, Processing, Lab) with a
+    /// deviation, whatever the times on the deviations: a deviation at the MCC is the
+    /// origin even when Processing deviated earlier by the clock. Null with no deviation.
+    /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Checkpoint? OriginCheckpoint{get; set;}
 
-    // The first deviation at the origin checkpoint, by OccurredAt then SourceEventId.
-    // Null with no deviation.
+    /// <summary>
+    /// The first deviation at the origin checkpoint, by OccurredAt then SourceEventId.
+    /// Null with no deviation.
+    /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public TraceDeviation? Origin{get; set;}
 
-    // Always four, in stage order: Mcc, Intake, Processing, Lab. A checkpoint with no data
-    // is MissingData or NotYetReached, never left out.
+    /// <summary>
+    /// Always four, in stage order: Mcc, Intake, Processing, Lab. A checkpoint with no data
+    /// is MissingData or NotYetReached, never left out.
+    /// </summary>
     public List<TraceCheckpoint> Chain{get; set;} = [];
 
-    // Processing holds, in the order they were raised.
+    /// <summary>
+    /// Processing holds, in the order they were raised.
+    /// </summary>
     public List<TraceHold> Holds{get; set;} = [];
 
-    // dispatch -> tanks -> consignments -> societies, in the snapshot's order. Null until
-    // the snapshot resolves.
+    /// <summary>
+    /// dispatch -> tanks -> consignments -> societies, in the snapshot's order. Null until
+    /// the snapshot resolves.
+    /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public BatchLinksDto? Links{get; set;}
 
-    // Each society behind the batch once, in the order the snapshot lists them: tank by
-    // tank, consignment by consignment. Not sorted. Empty until the snapshot resolves.
+    /// <summary>
+    /// Each society behind the batch once, in the order the snapshot lists them: tank by
+    /// tank, consignment by consignment. Not sorted. Empty until the snapshot resolves.
+    /// </summary>
     public List<SocietyLinkDto> Societies{get; set;} = [];
 }
 
 public enum TraceCheckpointStatus
 {
-    // The checkpoint has data and no deviation.
+    /// <summary>
+    /// The checkpoint has data and no deviation.
+    /// </summary>
     WithinSpec,
 
-    // The checkpoint reported at least one deviation.
+    /// <summary>
+    /// The checkpoint reported at least one deviation.
+    /// </summary>
     Deviation,
 
-    // No data, although the batch is past this point: a gap in the trace.
+    /// <summary>
+    /// No data, although the batch is past this point: a gap in the trace.
+    /// </summary>
     MissingData,
 
-    // No data, and the batch has not got that far yet.
+    /// <summary>
+    /// No data, and the batch has not got that far yet.
+    /// </summary>
     NotYetReached
 }
 
@@ -62,17 +84,27 @@ public class TraceCheckpoint
     public Checkpoint Checkpoint{get; set;}
     public TraceCheckpointStatus Status{get; set;}
 
-    // Earliest and latest time the checkpoint recorded something; null when it has no data.
+    /// <summary>
+    /// Earliest time the checkpoint recorded something; null when it has no data.
+    /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public DateTime? FirstRecordedAt{get; set;}
+
+    /// <summary>
+    /// Latest time the checkpoint recorded something; null when it has no data.
+    /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public DateTime? LastRecordedAt{get; set;}
 
-    // Why the data is missing, for MissingData. Null otherwise.
+    /// <summary>
+    /// Why the data is missing, for MissingData. Null otherwise.
+    /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public string? MissingReason{get; set;}
 
-    // By OccurredAt, then SourceEventId.
+    /// <summary>
+    /// By OccurredAt, then SourceEventId.
+    /// </summary>
     public List<TraceDeviation> Deviations{get; set;} = [];
 }
 
@@ -86,7 +118,9 @@ public class TraceDeviation
     public decimal? Limit{get; set;}
     public string? Description{get; set;}
 
-    // The upstream event that reported it.
+    /// <summary>
+    /// The upstream event that reported it.
+    /// </summary>
     public Guid SourceEventId{get; set;}
 }
 
@@ -94,18 +128,24 @@ public class TraceHold
 {
     public required string HoldId{get; set;}
 
-    // From ProcessingHoldRaised; when only the ProcessingHoldResolved has arrived, the
-    // raise time and reason it carries.
+    /// <summary>
+    /// From ProcessingHoldRaised; when only the ProcessingHoldResolved has arrived, the
+    /// raise time and reason it carries.
+    /// </summary>
     public DateTime RaisedAt{get; set;}
     public string? RaisedBy{get; set;}
     public string? Reason{get; set;}
     public string? FailedParameter{get; set;}
     public string? FailedValue{get; set;}
 
-    // Raised and not resolved, by BatchStatusRules.OpenHolds.
+    /// <summary>
+    /// Raised and not resolved, by BatchStatusRules.OpenHolds.
+    /// </summary>
     public bool IsOpen{get; set;}
 
-    // From ProcessingHoldResolved; null while the hold is open.
+    /// <summary>
+    /// From ProcessingHoldResolved; null while the hold is open.
+    /// </summary>
     public DateTime? ResolvedAt{get; set;}
     public string? ResolvedBy{get; set;}
     public string? Resolution{get; set;}

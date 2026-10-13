@@ -17,13 +17,17 @@ public class BatchSummaryDto
     public DateTime FirstEventAt{get; set;}
     public DateTime LastEventAt{get; set;}
 
-    // The batch's current lab determination: Pending until Quality Lab has made one.
+    /// <summary>
+    /// The batch's current lab determination: Pending until Quality Lab has made one.
+    /// </summary>
     public LabResult LabResult{get; set;}
 }
 
 public enum LabResult
 {
-    // No current determination yet.
+    /// <summary>
+    /// No current determination yet.
+    /// </summary>
     Pending,
 
     Cleared,

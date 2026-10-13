@@ -9,25 +9,37 @@ namespace TraceabilityService.Api.Contracts;
 /// </summary>
 public class BatchRecordDto : BatchSummaryDto
 {
-    // Null when the batch has no upstream snapshot row yet.
+    /// <summary>
+    /// Null when the batch has no upstream snapshot row yet.
+    /// </summary>
     public UpstreamStatusDto? Upstream{get; set;}
 
-    // Always four, in stage order: Mcc, Intake, Processing, Lab.
+    /// <summary>
+    /// Always four, in stage order: Mcc, Intake, Processing, Lab.
+    /// </summary>
     public List<CheckpointSectionDto> Checkpoints{get; set;} = [];
 
-    // dispatch -> tanks -> consignments -> societies. Null until the snapshot resolves.
+    /// <summary>
+    /// dispatch -> tanks -> consignments -> societies. Null until the snapshot resolves.
+    /// </summary>
     public BatchLinksDto? Links{get; set;}
 }
 
 public enum CheckpointState
 {
-    // The checkpoint has data.
+    /// <summary>
+    /// The checkpoint has data.
+    /// </summary>
     Recorded,
 
-    // No data, and the batch has not got that far yet.
+    /// <summary>
+    /// No data, and the batch has not got that far yet.
+    /// </summary>
     NotYetReached,
 
-    // No data, although the batch is past this point: a gap in the trace.
+    /// <summary>
+    /// No data, although the batch is past this point: a gap in the trace.
+    /// </summary>
     NoDataReceived
 }
 
@@ -36,27 +48,45 @@ public class CheckpointSectionDto
     public Checkpoint Checkpoint{get; set;}
     public CheckpointState State{get; set;}
 
-    // Earliest and latest OccurredAt among the records; null when there are none.
+    /// <summary>
+    /// Earliest OccurredAt among the records; null when there are none.
+    /// </summary>
     public DateTime? FirstRecordedAt{get; set;}
+
+    /// <summary>
+    /// Latest OccurredAt among the records; null when there are none.
+    /// </summary>
     public DateTime? LastRecordedAt{get; set;}
 
-    // In the order they happened.
+    /// <summary>
+    /// In the order they happened.
+    /// </summary>
     public List<CheckpointRecordDto> Records{get; set;} = [];
+
+    /// <summary>
+    /// In the order they happened.
+    /// </summary>
     public List<DeviationDto> Deviations{get; set;} = [];
 }
 
 public class CheckpointRecordDto
 {
-    // What was recorded: the upstream event type for Processing and Lab, or
-    // DispatchCreated, ConsignmentRegistered or ArrivalScreened from the snapshot.
+    /// <summary>
+    /// What was recorded: the upstream event type for Processing and Lab, or
+    /// DispatchCreated, ConsignmentRegistered or ArrivalScreened from the snapshot.
+    /// </summary>
     public required string Kind{get; set;}
     public DateTime OccurredAt{get; set;}
     public string? RecordedBy{get; set;}
 
-    // The record's details as a JSON object: the event payload, or the snapshot part.
+    /// <summary>
+    /// The record's details as a JSON object: the event payload, or the snapshot part.
+    /// </summary>
     public JsonElement Data{get; set;}
 
-    // The upstream event, for records that came from one.
+    /// <summary>
+    /// The upstream event, for records that came from one.
+    /// </summary>
     public Guid? SourceEventId{get; set;}
 }
 
@@ -77,7 +107,9 @@ public class UpstreamStatusDto
     public DateTime? LastAttemptAt{get; set;}
     public DateTime? ResolvedAt{get; set;}
 
-    // Why it has not resolved: not found upstream, or the service failed.
+    /// <summary>
+    /// Why it has not resolved: not found upstream, or the service failed.
+    /// </summary>
     public string? FailureReason{get; set;}
 }
 

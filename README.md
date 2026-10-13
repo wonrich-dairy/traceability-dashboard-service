@@ -82,6 +82,7 @@ curl -sS http://localhost:5240/health; echo
 | API | http://localhost:5240 |
 | Health | http://localhost:5240/health |
 | Version | http://localhost:5240/version |
+| Swagger UI | http://localhost:5240/swagger |
 | Kafka UI (wonrich-infra) | http://localhost:8085 |
 
 ```bash
@@ -187,6 +188,8 @@ The MCC and Intake Service accepts the shared Auth Service tokens, so service-to
 | GET | `/health` | Service and dependency health (anonymous) |
 | GET | `/version` | Commit SHA of the running build (anonymous) |
 | GET | `/metrics` | Prometheus metrics (anonymous) |
+| GET | `/swagger` | Swagger UI, Development and Staging only (anonymous). See [API documentation](#api-documentation-swagger) |
+| GET | `/swagger/v1/swagger.json` | The OpenAPI document the UI reads, Development and Staging only (anonymous) |
 | GET | `/api/me` | The caller's user ID, name, role and facility from the JWT (requires a token) |
 | GET | `/api/batches/{batchId}` | One batch's full record: summary, upstream status, four checkpoint sections (MCC, Factory Intake, Processing, Quality Lab) each with a state, records and deviations, and links from dispatch to tanks, consignments and societies. 404 problem response if no batch has that ID (QualityControlOfficer or SystemAdministrator) |
 | GET | `/api/batches/{batchId}/trace` | The batch's backward trace (SCRUM-134): its four checkpoints in stage order, each `WithinSpec`, `Deviation`, `MissingData` or `NotYetReached`, the checkpoint the first deviation came from (`originCheckpoint`, `origin`), its Processing holds, and its tanks and societies in the upstream snapshot's order. 404 problem response if no batch has that ID (QualityControlOfficer or SystemAdministrator) |
@@ -200,6 +203,28 @@ The MCC and Intake Service accepts the shared Auth Service tokens, so service-to
 | GET | `/api/dashboard/marginal-societies?limit=…` | The same as `/api/dashboard/societies`, under the path the frontend's dashboard asks for (QualityControlOfficer or SystemAdministrator) |
 
 Feature endpoints are added by the developer and documented here.
+
+### API documentation (Swagger)
+
+The service serves its own Swagger UI (SCRUM-125), set up the same way as the other services (SCRUM-49): Swashbuckle, in `Api/Infrastructure/Swagger`.
+
+| | Development | Staging | Production |
+|---|---|---|---|
+| UI | `/swagger` | `/swagger` | Off (401, like any unknown path) |
+| OpenAPI document | `/swagger/v1/swagger.json` | `/swagger/v1/swagger.json` | Off |
+
+The page and the document load without a token. To call an endpoint from the page, sign in at the Auth Service (`POST /api/auth/login`), choose **Authorize** and paste the access token without `Bearer `. The root descriptor (`/`) shows `swagger` as the path, or `null` in Production.
+
+Every controller action is in the document, with no Swagger configuration needed. For each endpoint it shows:
+
+| What | Where it comes from |
+|---|---|
+| Path, HTTP method, parameters | The route and the action's parameters. A `[FromQuery]` object such as `DashboardQuery` is shown as its separate query parameters |
+| Request and response schemas | The action's return type and its `[ProducesResponseType(typeof(...), status, contentType)]` attributes. Declare one for each status the action can return |
+| Summary, description, parameter and status texts | The action's XML comments: `<summary>`, `<remarks>`, `<param>`, `<response code="...">`. Property descriptions come from `///` comments on the DTOs in `Api/Contracts`; a plain `//` comment is not shown |
+| Authentication | `AuthorizationOperationFilter`: every operation needs the Bearer token and lists 401, as the fallback policy requires, unless it is `[AllowAnonymous]`. When `[Authorize]` names roles, directly or through a policy such as `QualityControl`, the roles are added to the description and 403 is listed |
+
+The XML file is written by `GenerateDocumentationFile` in the project file and published with the app. `/health`, `/metrics`, `/version` and `/` are operational endpoints, not part of the API, and are left out. `SwaggerEndpointTests` checks that every controller endpoint is in the document with its schemas, authentication and XML comments, and that Production serves none of it.
 
 Each checkpoint section of a batch record has a `state`:
 

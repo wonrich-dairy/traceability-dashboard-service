@@ -8,15 +8,23 @@ namespace TraceabilityService.Api.Contracts;
 /// </summary>
 public abstract class DashboardResponse
 {
-    // The latest processed_messages.ProcessedAt: when the read model last took in an
-    // event. Null if nothing has been processed yet.
+    /// <summary>
+    /// The latest processed_messages.ProcessedAt: when the read model last took in an
+    /// event. Null if nothing has been processed yet.
+    /// </summary>
     public DateTime? DataAsOf{get; set;}
 
     public string? Facility{get; set;}
     public string? ProductLine{get; set;}
 
-    // The production days covered, both ends inclusive.
+    /// <summary>
+    /// The first production day covered, inclusive.
+    /// </summary>
     public DateOnly From{get; set;}
+
+    /// <summary>
+    /// The last production day covered, inclusive.
+    /// </summary>
     public DateOnly To{get; set;}
 }
 
@@ -30,7 +38,9 @@ public class StatusCountsDto
 
 public class TodayCountsDto : StatusCountsDto
 {
-    // Today in Asia/Colombo.
+    /// <summary>
+    /// Today in Asia/Colombo.
+    /// </summary>
     public DateOnly Date{get; set;}
 }
 
@@ -46,16 +56,20 @@ public class DashboardSummaryDto : DashboardResponse
     public required TodayCountsDto Today{get; set;}
     public required StatusCountsDto Range{get; set;}
 
-    // Deviations over the range by the checkpoint that reported them: always four, in
-    // stage order.
+    /// <summary>
+    /// Deviations over the range by the checkpoint that reported them: always four, in
+    /// stage order.
+    /// </summary>
     public List<CheckpointDeviationDto> Deviations{get; set;} = [];
 }
 
 /// <summary>GET /api/dashboard/deviations: the summary's deviations on their own.</summary>
 public class DashboardDeviationsDto : DashboardResponse
 {
-    // Deviations over the range by the checkpoint that reported them: always four, in
-    // stage order.
+    /// <summary>
+    /// Deviations over the range by the checkpoint that reported them: always four, in
+    /// stage order.
+    /// </summary>
     public List<CheckpointDeviationDto> Checkpoints{get; set;} = [];
 }
 
@@ -67,15 +81,19 @@ public class TrendPointDto
     public int ClearedCount{get; set;}
     public int FailedCount{get; set;}
 
-    // Failed / BatchCount, a fraction from 0 to 1: pending and on-hold batches count, so a
-    // day still being decided reads low. Null only when the day has no batches.
+    /// <summary>
+    /// Failed / BatchCount, a fraction from 0 to 1: pending and on-hold batches count, so a
+    /// day still being decided reads low. Null only when the day has no batches.
+    /// </summary>
     public double? FailRate{get; set;}
 }
 
 /// <summary>GET /api/dashboard/trend.</summary>
 public class DashboardTrendDto : DashboardResponse
 {
-    // One per day and product line that has data, by date then product line.
+    /// <summary>
+    /// One per day and product line that has data, by date then product line.
+    /// </summary>
     public List<TrendPointDto> Points{get; set;} = [];
 }
 
@@ -88,7 +106,9 @@ public class FailureReasonDto
 /// <summary>GET /api/dashboard/failure-reasons.</summary>
 public class DashboardFailureReasonsDto : DashboardResponse
 {
-    // Most frequent first.
+    /// <summary>
+    /// Most frequent first.
+    /// </summary>
     public List<FailureReasonDto> Reasons{get; set;} = [];
 }
 
@@ -99,20 +119,28 @@ public class RecentFailureDto
     public required string ProductLine{get; set;}
     public required string Facility{get; set;}
 
-    // The batch's latest event: when the failure was recorded.
+    /// <summary>
+    /// The batch's latest event: when the failure was recorded.
+    /// </summary>
     public DateTime FailedAt{get; set;}
 
-    // The batch's deviation reasons, without repeats.
+    /// <summary>
+    /// The batch's deviation reasons, without repeats.
+    /// </summary>
     public List<string> ReasonCodes{get; set;} = [];
 
-    // The batch record, e.g. /api/batches/262-FM-B.
+    /// <summary>
+    /// The batch record, e.g. /api/batches/262-FM-B.
+    /// </summary>
     public required string TracePath{get; set;}
 }
 
 /// <summary>GET /api/dashboard/recent-failures.</summary>
 public class DashboardRecentFailuresDto : DashboardResponse
 {
-    // Newest first.
+    /// <summary>
+    /// Newest first.
+    /// </summary>
     public List<RecentFailureDto> Batches{get; set;} = [];
 }
 
@@ -121,14 +149,26 @@ public class MarginalSocietyDto
     public required string SocietyCode{get; set;}
     public string? SocietyName{get; set;}
 
-    // Distinct consignments, and the batches in range they went into. One consignment can
-    // feed two batches when Processing splits a dispatch, and counts once here.
+    /// <summary>
+    /// Distinct consignments. One consignment can feed two batches when Processing splits a
+    /// dispatch, and counts once here.
+    /// </summary>
     public int ConsignmentCount{get; set;}
+
+    /// <summary>
+    /// The batches in range its consignments went into.
+    /// </summary>
     public int BatchCount{get; set;}
 
-    // The closest any of its consignments came to a rejection limit, as a fraction of the
-    // limit, and on which measure. Null when none of them could be scored.
+    /// <summary>
+    /// The closest any of its consignments came to a rejection limit, as a fraction of the
+    /// limit. Null when none of them could be scored.
+    /// </summary>
     public decimal? TightestMargin{get; set;}
+
+    /// <summary>
+    /// The measure the tightest margin was on. Null when none of them could be scored.
+    /// </summary>
     public string? TightestMeasure{get; set;}
 }
 
@@ -138,12 +178,20 @@ public class DashboardSocietiesDto : DashboardResponse
     public const string UpstreamSnapshots = "upstream snapshots";
     public const string ContributorsInRange = "societies that contributed to a batch in range";
 
-    // Where the figures come from and what they cover, so the screen can state the
-    // limitation: per-society quality is not kept here (TR-12 is descoped), only what the
-    // cached snapshots of batches in the range say.
+    /// <summary>
+    /// Where the figures come from, so the screen can state the limitation: per-society
+    /// quality is not kept here (TR-12 is descoped), only what the cached snapshots of
+    /// batches in the range say. Always "upstream snapshots".
+    /// </summary>
     public string Source{get; set;} = UpstreamSnapshots;
+
+    /// <summary>
+    /// What the figures cover. Always "societies that contributed to a batch in range".
+    /// </summary>
     public string Coverage{get; set;} = ContributorsInRange;
 
-    // Most marginal first; those with no score last.
+    /// <summary>
+    /// Most marginal first; those with no score last.
+    /// </summary>
     public List<MarginalSocietyDto> Societies{get; set;} = [];
 }
