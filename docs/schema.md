@@ -340,6 +340,12 @@ Upstream relays deliver at least once, so the same event can arrive twice. A con
 | `IX_audit_entries_EntityType_EntityId_OccurredAt` | `EntityType`, `EntityId`, `OccurredAt` | | The history of one record |
 | `IX_audit_entries_OccurredAt` | `OccurredAt` | | Everything in a time window |
 
+Written by:
+
+| Action | EntityType | EntityId | Details |
+|---|---|---|---|
+| `BatchSearchExported` | `BatchSearch` | The export's file name | `{ fileName, rowCount, role, filters }`: the filters as applied, null where not given (SCRUM-139) |
+
 ---
 
 ## 4. Coded values

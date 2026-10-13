@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using TraceabilityService.Api.Contracts;
 using TraceabilityService.Api.Infrastructure.Persistence;
@@ -70,24 +71,27 @@ public class BatchRecordService(TraceabilityDbContext db) : IBatchRecordService
         return await query
             .OrderBy(b => b.FirstEventAt)
             .ThenBy(b => b.BatchId)
-            .Select(b => new BatchSummaryDto
-            {
-                BatchId = b.BatchId,
-                DispatchRef = b.DispatchRef,
-                BatchReference = b.BatchReference,
-                ProductLine = b.ProductLine,
-                Facility = b.Facility,
-                Status = b.Status,
-                Completeness = b.Completeness,
-                FirstEventAt = b.FirstEventAt,
-                LastEventAt = b.LastEventAt,
-                // The subquery runs in MySQL; LabResults.From maps its result as rows are read.
-                LabResult = LabResults.From(b.LabDeterminations
-                    .Where(d => !d.IsSuperseded)
-                    .OrderByDescending(d => d.DeterminedAt)
-                    .Select(d => (DeterminationResult?)d.Result)
-                    .FirstOrDefault()),
-            })
+            .Select(ToSummary)
             .ToListAsync(cancellationToken);
     }
+
+    // A batch_records row as a summary, for a query's Select. Shared with the batch search.
+    internal static readonly Expression<Func<BatchRecord, BatchSummaryDto>> ToSummary = b => new BatchSummaryDto
+    {
+        BatchId = b.BatchId,
+        DispatchRef = b.DispatchRef,
+        BatchReference = b.BatchReference,
+        ProductLine = b.ProductLine,
+        Facility = b.Facility,
+        Status = b.Status,
+        Completeness = b.Completeness,
+        FirstEventAt = b.FirstEventAt,
+        LastEventAt = b.LastEventAt,
+        // The subquery runs in MySQL; LabResults.From maps its result as rows are read.
+        LabResult = LabResults.From(b.LabDeterminations
+            .Where(d => !d.IsSuperseded)
+            .OrderByDescending(d => d.DeterminedAt)
+            .Select(d => (DeterminationResult?)d.Result)
+            .FirstOrDefault()),
+    };
 }

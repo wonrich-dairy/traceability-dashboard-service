@@ -194,6 +194,8 @@ The MCC and Intake Service accepts the shared Auth Service tokens, so service-to
 | GET | `/api/batches/{batchId}` | One batch's full record: summary, upstream status, four checkpoint sections (MCC, Factory Intake, Processing, Quality Lab) each with a state, records and deviations, and links from dispatch to tanks, consignments and societies. 404 problem response if no batch has that ID (QualityControlOfficer or SystemAdministrator) |
 | GET | `/api/batches/{batchId}/trace` | The batch's backward trace (SCRUM-134): its four checkpoints in stage order, each `WithinSpec`, `Deviation`, `MissingData` or `NotYetReached`, the checkpoint the first deviation came from (`originCheckpoint`, `origin`), its Processing holds, and its tanks and societies in the upstream snapshot's order. 404 problem response if no batch has that ID (QualityControlOfficer or SystemAdministrator) |
 | GET | `/api/batches?dispatchRef=…` or `?batchReference=WR-…` | Summaries of the matching batches, oldest first. One dispatch can feed several batches, so this is always a list; no match is an empty list, not a 404. With both filters, a batch must match both; with neither, 400 (QualityControlOfficer or SystemAdministrator) |
+| GET | `/api/batches/search?…&page=…` | Batch search (SCRUM-139): the batches matching every filter given, 50 to a page, newest first, with `totalCount` and `totalPages`. Filters: `status`, `productLine`, `from`/`to` (factory days of the batch's first event), `society` (code or name), `tank`, `user`, `reasonCode`, `facility`. Each batch appears once, however many tanks, societies, users or reasons it has. Each row adds its tanks, societies, users, reason codes and five lab parameters; one its product line does not measure is `NotApplicable`. No match is a 200 with an empty page and a `message`. See [Batch search and export](#batch-search-and-export) (QualityControlOfficer or SystemAdministrator) |
+| GET | `/api/batches/export?…` | The same filters, every matching batch as CSV, not only one page. No empty cells, a file name carrying the filters and the export date, and an `audit_entries` row per export. `X-Batch-Count` gives the row count; no match is the heading row alone (QualityControlOfficer or SystemAdministrator) |
 | GET | `/api/dashboard/summary` | Pending, cleared, failed and on-hold counts for today and for the range, and deviations per checkpoint over the range (QualityControlOfficer or SystemAdministrator) |
 | GET | `/api/dashboard/deviations` | Deviations per checkpoint over the range, always four in stage order: the summary's figures on their own, as `checkpoints` (QualityControlOfficer or SystemAdministrator) |
 | GET | `/api/dashboard/trend` | Per day and product line: batch, cleared and failed counts and `failRate` = failed ÷ batches, pending and on-hold batches included, so a day still being decided reads low (QualityControlOfficer or SystemAdministrator) |
@@ -280,6 +282,26 @@ Per-society quality data is not kept (TR-12 is descoped), so the societies panel
 | `kafka` | `Degraded` | 200 |
 
 ---
+
+### Batch search and export
+
+`GET /api/batches/search` and `GET /api/batches/export` (SCRUM-139) take the same filters, all optional; together they must all match. Status and product line are matched without regard to case, and an unknown one is a 400 naming the parameter. Society, tank and user are matched without regard to case too. Society and tank, and the MCC and intake users, come from the resolved upstream snapshot (`JSON_TABLE` over its payload, MySQL 8). Processing and Quality Lab users come from `timeline_events.RecordedBy`. Every filter is an `EXISTS` or `IN` subquery on `batch_records`, never a join, so one batch is one row and the total counts batches.
+
+The export has one row per batch and these columns: batch ID, facility, product line, status, lab result, trace completeness, dispatch ref, batch reference, first and last event (UTC), upstream snapshot status, tanks, societies, users, deviation count, reason codes, then the five lab parameters. A blank cell in an audit export cannot be told apart from a test somebody forgot to run, so no cell is left empty:
+
+| Marker | Means |
+|---|---|
+| `N/A` | The product line does not measure it: SNF and corrected CLR on SY, SK, DY and CD; texture on FM and FLM (Quality Lab's panel shape) |
+| `Pending` | Quality Lab has made no determination yet |
+| `No deviation` | The current determination records nothing against the parameter |
+| `Out of spec: 3.20 against limit 3.50` | The current determination's reading and the limit it broke |
+| `Not received` | No event has carried the value yet (dispatch ref, or no snapshot row) |
+| `Not resolved` | The upstream snapshot has not resolved, so tanks, societies and batch reference are not known yet |
+| `None` | Known, and there are none (reason codes, users) |
+
+The file is UTF-8 with a byte order mark, so Excel reads Sinhala and Tamil society names. Lines end in CRLF. A cell starting with `=`, `+`, `-` or `@` is prefixed with `'`, so a spreadsheet does not run it as a formula. The file is named `batches_[filters]_exported-[date].csv`, for example `batches_status-Failed_line-FM_from-2026-09-01_to-2026-09-30_exported-2026-10-13.csv`, or `batches_all_exported-…` with no filter. The date is today in Asia/Colombo.
+
+Each export writes an `audit_entries` row before the file is returned: `Action` `BatchSearchExported`, `EntityType` `BatchSearch`, `EntityId` the file name, `Actor` the token's user ID, the correlation ID, and `Details` with the filters, the row count and the caller's role. A refused request (401 or 403) is not audited, since nothing was exported. CORS exposes `Content-Disposition` and `X-Batch-Count`, so the frontend can read the file name and count.
 
 ## Database
 
