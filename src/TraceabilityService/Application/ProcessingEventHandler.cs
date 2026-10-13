@@ -21,6 +21,7 @@ public static class ProcessingConsumers
     {
         services.TryAddScoped<IAggregateWriter, AggregateWriter>();
         services.TryAddScoped<ProcessingEventApplier>();
+        services.TryAddSingleton<UpstreamResolutionQueue>();
 
         services.AddEventConsumer(
             KafkaConsumerOptions.From(configuration, StageEvents,
@@ -62,13 +63,17 @@ public sealed class ProcessingEventHandler<TEvent>(ProcessingEventApplier applie
 /// (<see cref="EventProcessor"/>): finds or creates the batch, adds the Processing timeline
 /// event and its deviation, moves FirstEventAt and LastEventAt, recomputes the status from
 /// everything stored (<see cref="BatchStatusRules"/>), and updates both aggregate tables.
-/// An event for a dispatch with no batch yet is kept until the batch exists.
+/// An event for a dispatch with no batch yet is kept until the batch exists. The first time a
+/// batch is seen, its upstream snapshot is created PendingRetry in the same transaction and
+/// queued for <see cref="UpstreamResolutionWorker"/> once that commits (SCRUM-132).
 /// </summary>
 public sealed class ProcessingEventApplier(
     TraceabilityDbContext db,
     IAggregateWriter aggregates,
     TimeProvider time,
     IConfiguration configuration,
+    AfterCommit afterCommit,
+    UpstreamResolutionQueue upstream,
     ILogger<ProcessingEventApplier> logger)
 {
     // Processing runs one factory and its events carry no facility, so it is configured.
@@ -111,7 +116,7 @@ public sealed class ProcessingEventApplier(
         var events = new List<(ProcessingEventBase Event, string Payload)> { (processingEvent, consumed.Payload) };
         events.AddRange(await TakePendingAsync(batch.DispatchRef, cancellationToken));
 
-        await ApplyToBatchAsync(batch, created, events, now, cancellationToken);
+        await ApplyToBatchAsync(batch, created, events, consumed.CorrelationId, now, cancellationToken);
     }
 
     // An event raised against a dispatch: applied to its batch if one exists, kept otherwise.
@@ -130,7 +135,7 @@ public sealed class ProcessingEventApplier(
 
         if (batch is not null)
         {
-            await ApplyToBatchAsync(batch, created: false, [(processingEvent, consumed.Payload)], now, cancellationToken);
+            await ApplyToBatchAsync(batch, created: false, [(processingEvent, consumed.Payload)], consumed.CorrelationId, now, cancellationToken);
             return;
         }
 
@@ -207,9 +212,12 @@ public sealed class ProcessingEventApplier(
         BatchRecord batch,
         bool created,
         IReadOnlyList<(ProcessingEventBase Event, string Payload)> events,
+        string? correlationId,
         DateTime now,
         CancellationToken cancellationToken)
     {
+        QueueUpstreamResolution(batch, correlationId, now);
+
         // A new batch is counted as pending, then moved like any other.
         var statusBefore = created ? BatchStatus.Processing : batch.Status;
 
@@ -287,6 +295,28 @@ public sealed class ProcessingEventApplier(
                 ? new Dictionary<string, int> { [DailyReasonCodeAggregate.Unspecified] = deviations }
                 : new Dictionary<string, int>(),
         }, now, cancellationToken);
+    }
+
+    // A batch's upstream snapshot is created the first time the batch is seen: when it is new,
+    // or when it was created before snapshots were (the Include loaded none). The row is due at
+    // once and commits with the event; the attempt waits for the commit, since the worker cannot
+    // see the row before then. Should the queued attempt be lost, the worker's poll finds the row.
+    private void QueueUpstreamResolution(BatchRecord batch, string? correlationId, DateTime now)
+    {
+        if (batch.UpstreamSnapshot is not null)
+        {
+            return;
+        }
+
+        batch.UpstreamSnapshot = new UpstreamSnapshot
+        {
+            BatchId = batch.BatchId,
+            ResolutionStatus = ResolutionStatus.PendingRetry,
+            NextAttemptAt = now,
+        };
+
+        var batchId = batch.BatchId;
+        afterCommit.Add(() => upstream.Enqueue(batchId, correlationId));
     }
 
     // Everything stored for the batch that decides its status, this event included.

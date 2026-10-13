@@ -115,6 +115,7 @@ public sealed class EventProcessor(
         var handler = (IEventHandler)scope.ServiceProvider.GetRequiredService(handlerType);
         await handler.HandleAsync(consumed, cancellationToken);
         await unitOfWork.CommitAsync(cancellationToken);
+        scope.ServiceProvider.GetService<AfterCommit>()?.Run();
         return EventOutcome.Handled;
     }
 

@@ -632,17 +632,12 @@ DROP TEMPORARY TABLE seed_batch, seed_consignment;
 --   FROM daily_quality_aggregates
 --   WHERE Facility = 'FACTORY-01';
 --
--- Pass rate. These two disagree on purpose, and which number the dashboard
--- shows tells you whether undecided batches are being counted:
---   over decided batches only -> 75.00   (12 of 16; correct)
---   over every batch          -> 50.00   (12 of 24; the 8 pending or held
---                                         wrongly in the denominator)
+-- Fail rate, as the dashboard's trend gives it: failed over every batch, the
+-- 8 pending or held included. Expected: 16.67 (4 of 24). Over decided batches
+-- only it would be 25.00 (4 of 16); seeing that means the denominator is wrong.
 --
 --   SELECT
---       ROUND(100.0 * SUM(ClearedCount)
---             / SUM(ClearedCount + FailedCount), 2) AS pass_rate_decided,
---       ROUND(100.0 * SUM(ClearedCount)
---             / SUM(BatchCount), 2)                 AS pass_rate_all
+--       ROUND(100.0 * SUM(FailedCount) / SUM(BatchCount), 2) AS fail_rate
 --   FROM daily_quality_aggregates
 --   WHERE Facility = 'FACTORY-01';
 --

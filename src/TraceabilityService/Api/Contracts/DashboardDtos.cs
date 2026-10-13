@@ -51,6 +51,14 @@ public class DashboardSummaryDto : DashboardResponse
     public List<CheckpointDeviationDto> Deviations{get; set;} = [];
 }
 
+/// <summary>GET /api/dashboard/deviations: the summary's deviations on their own.</summary>
+public class DashboardDeviationsDto : DashboardResponse
+{
+    // Deviations over the range by the checkpoint that reported them: always four, in
+    // stage order.
+    public List<CheckpointDeviationDto> Checkpoints{get; set;} = [];
+}
+
 public class TrendPointDto
 {
     public DateOnly Date{get; set;}
@@ -59,8 +67,8 @@ public class TrendPointDto
     public int ClearedCount{get; set;}
     public int FailedCount{get; set;}
 
-    // Failed / (cleared + failed), a fraction from 0 to 1. Null when nothing was decided
-    // that day: there is no rate, and 0 would read as "nothing failed".
+    // Failed / BatchCount, a fraction from 0 to 1: pending and on-hold batches count, so a
+    // day still being decided reads low. Null only when the day has no batches.
     public double? FailRate{get; set;}
 }
 

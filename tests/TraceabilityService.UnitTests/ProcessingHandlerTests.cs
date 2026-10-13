@@ -43,6 +43,8 @@ public sealed class ProcessingHandlerTests : IDisposable
             .AddSingleton<IAggregateWriter>(_aggregates)
             .AddSingleton<ProcessedEvents>()
             .AddScoped<IEventUnitOfWork, InMemoryUnitOfWork>()
+            .AddScoped<AfterCommit>()
+            .AddSingleton<UpstreamResolutionQueue>()
             .AddScoped<ProcessingEventApplier>();
 
         var stageHandlers = new EventHandlerMap();

@@ -63,4 +63,15 @@ public static class TraceabilityMetrics
 
     /// <summary>Call when an event is parked on a dead-letter topic.</summary>
     public static void RecordDeadLetter(string topic) => EventsDeadLettered.WithLabels(topic).Inc();
+
+    // ── Upstream resolution (MCC and Intake Service) ─────────────────────────
+
+    /// <summary>Upstream snapshot lookups, by the status they left the snapshot in.</summary>
+    public static readonly Counter UpstreamResolutions = Metrics.CreateCounter(
+        "traceability_upstream_resolutions_total",
+        "Upstream snapshot lookup attempts, by resulting status (Resolved, PendingRetry, Unavailable).",
+        new CounterConfiguration { LabelNames = new[] { "status" } });
+
+    public static void RecordUpstreamResolution(Domain.Entities.ResolutionStatus status) =>
+        UpstreamResolutions.WithLabels(status.ToString()).Inc();
 }

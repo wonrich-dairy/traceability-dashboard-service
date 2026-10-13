@@ -38,7 +38,17 @@ public class DashboardController(IDashboardService dashboard, FactoryCalendar ca
         return filter is null ? ValidationProblem(ModelState) : Ok(await _dashboard.GetSummaryAsync(filter, cancellationToken));
     }
 
-    /// <summary>Fail rate for each day and product line: failed / (cleared + failed), null when nothing was decided.</summary>
+    /// <summary>Deviations over the range per checkpoint, always four in stage order: the summary's figures on their own.</summary>
+    [HttpGet("deviations")]
+    [ProducesResponseType(typeof(DashboardDeviationsDto), StatusCodes.Status200OK, "application/json")]
+    public async Task<ActionResult<DashboardDeviationsDto>> Deviations(
+        [FromQuery] DashboardQuery query, CancellationToken cancellationToken)
+    {
+        var filter = Resolve(query);
+        return filter is null ? ValidationProblem(ModelState) : Ok(await _dashboard.GetDeviationsAsync(filter, cancellationToken));
+    }
+
+    /// <summary>Fail rate for each day and product line: failed / every batch of the day, pending and on hold included.</summary>
     [HttpGet("trend")]
     [ProducesResponseType(typeof(DashboardTrendDto), StatusCodes.Status200OK, "application/json")]
     public async Task<ActionResult<DashboardTrendDto>> Trend(
@@ -79,12 +89,14 @@ public class DashboardController(IDashboardService dashboard, FactoryCalendar ca
     /// <summary>
     /// The most marginal societies behind the batches in range: whose milk came closest to
     /// being rejected at the MCC gate. Read from the batches' cached upstream snapshots
-    /// (TR-12 is descoped), which source and coverage in the response say.
+    /// (TR-12 is descoped), which source and coverage in the response say. Also served as
+    /// marginal-societies, the path the frontend's dashboard asks for.
     /// </summary>
     /// <param name="query">The common dashboard filters.</param>
     /// <param name="limit">How many, 1 to 50. Default 10.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     [HttpGet("societies")]
+    [HttpGet("marginal-societies")]
     [ProducesResponseType(typeof(DashboardSocietiesDto), StatusCodes.Status200OK, "application/json")]
     public async Task<ActionResult<DashboardSocietiesDto>> Societies(
         [FromQuery] DashboardQuery query,

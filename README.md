@@ -129,9 +129,13 @@ Kafka is then reached at `localhost:29092`, the default in `appsettings.json`.
 | `Kafka:ConsumerGroups:BatchDeterminations` | `Kafka__ConsumerGroups__BatchDeterminations` | | Consumer group for the determinations, default `traceability-batch-determinations` |
 | `Kafka:Consumers:Enabled` | `Kafka__Consumers__Enabled` | | `false` stops all consumers from starting (the integration tests set it). Default `true` |
 | `Traceability:FactoryFacility` | `Traceability__FactoryFacility` | | The facility batches created from Processing's events get, since those events carry none. Must match the `facility` claim of the factory's users. Default `FACTORY-01` |
-| `MccIntake:BaseUrl` | `MccIntake__BaseUrl` | `MCC_INTAKE_BASE_URL` | MCC and Intake Service base URL (SCRUM-12) |
-| `MccIntake:ClientId` | `MccIntake__ClientId` | `MCC_INTAKE_CLIENT_ID` | Service-to-service client ID |
-| `MccIntake:ClientSecret` | `MccIntake__ClientSecret` | `MCC_INTAKE_CLIENT_SECRET` | Service-to-service secret |
+| `Services:MccIntake:BaseUrl` | `Services__MccIntake__BaseUrl` | `MCC_INTAKE_BASE_URL` | MCC and Intake Service base URL (SCRUM-12, SCRUM-132). Empty leaves upstream resolution off |
+| `Services:MccIntake:TimeoutSeconds` | `Services__MccIntake__TimeoutSeconds` | `MCC_INTAKE_TIMEOUT_SECONDS` | Per-request timeout to it and to the Auth Service sign-in. Default `10` |
+| `Services:MccIntake:ClientId` | `Services__MccIntake__ClientId` | `MCC_INTAKE_CLIENT_ID` | Service account user name at the Auth Service. Its role must grant the MCC and Intake Service's `TraceBatches` and `ScreenFactoryArrivals` policies |
+| `Services:MccIntake:ClientSecret` | `Services__MccIntake__ClientSecret` | `MCC_INTAKE_CLIENT_SECRET` | Service account password (secret) |
+| `Services:Auth:BaseUrl` | `Services__Auth__BaseUrl` | `AUTH_BASE_URL` | Auth Service base URL, for the service account's sign-in |
+| `Upstream:MaxAttempts` | `Upstream__MaxAttempts` | `UPSTREAM_MAX_ATTEMPTS` | Lookups before a snapshot that keeps failing is given up on as `Unavailable`. Default `10` |
+| `Upstream:PollIntervalSeconds` | `Upstream__PollIntervalSeconds` | `UPSTREAM_POLL_INTERVAL_SECONDS` | How often the retry worker looks for due `PendingRetry` snapshots. Default `30` |
 | `Cors:AllowedOrigins` | `Cors__AllowedOrigins__0`, `__1`, ... | `CORS_ORIGIN` | Frontend origins allowed to call the API |
 
 Each consumer's group is also the group its events are recorded under in `processed_messages`. The topics, dead-letter topics and consumer groups are registered in `wonrich-infra` (`kafka/topics.env`, `docs/kafka.md`; SCRUM-126). The brokers do not create topics on first use, so change them there first. Never reuse another service's group, e.g. Processing's `processing-stage-events`: consumers in one group share the messages, so each service would see only some of them.
@@ -157,6 +161,21 @@ The Processing consumers create a batch on its first event. A hold raised before
 
 A dead letter is the original message unchanged (key, value and headers) plus `x-original-topic`, `x-original-partition`, `x-original-offset`, `x-failure-reason`, `x-failure-timestamp` and `x-attempt-count`. Once the cause is fixed, replay it by publishing it back onto the source topic as it is.
 
+### Upstream snapshots (SCRUM-132)
+
+The first time the Processing consumers see a batch, they create its `upstream_snapshots` row as `PendingRetry` in the event's transaction, and once that commits they queue it for `UpstreamResolutionWorker`, which tries it straight away. One attempt (`UpstreamResolver`) looks the batch up in the MCC and Intake Service: factory intake's batch by the dispatch number (`GET /api/factory/batches?dispatchNote=`), which gives the batch reference, then that batch's trace (`GET /api/factory/batches/{reference}/trace`). The answer is mapped to the payload in [docs/schema.md](docs/schema.md#upstream_snapshotspayload) by `UpstreamSnapshotMapper`, and `UpstreamResolutionRules` decides the status:
+
+| Lookup | Status |
+|---|---|
+| The whole tree | `Resolved`: `Payload`, `ResolvedAt` and `batch_records.BatchReference` are filled, and the trace becomes `Complete` if Processing and the lab have reported |
+| No batch from that dispatch note, or no batch with that reference (a 404 with code `entity_not_found`) | `Unavailable` at once |
+| Gaps in the tree, e.g. a tank with no pours recorded, or a consignment whose society is unknown | `PendingRetry`: a partial tree is never stored, and the gap may be filled upstream |
+| Unreachable, timed out, any other status (a 401 is retried once with a new token), or an unreadable body | `PendingRetry` |
+
+A `PendingRetry` row is due again after 30 s, then 1, 2, 4 minutes and so on, capped at 30 minutes. At `Upstream:MaxAttempts` it becomes `Unavailable`, with `FailureReason` saying the retries ran out and why the last one failed. Every `Upstream:PollIntervalSeconds` the worker picks up due rows, 20 at a time, oldest first, so a lost queue entry or a restart only delays an attempt. Each attempt first claims its row (counting the attempt, pushing `NextAttemptAt` past the time the calls can take, and setting `LastCorrelationId`, the row's concurrency token), so two instances never call upstream for the same batch. A failed attempt never fails the Kafka consumer: the attempt is queued only after the event's transaction commits, and runs on the worker, not the consume loop. MCC is deliberately not in `/health`: it is an optional upstream, and the service works without it. The calls carry `X-Correlation-ID`: the triggering event's ID for the first attempt, a new one per retry, stored as `LastCorrelationId`.
+
+The MCC and Intake Service accepts the shared Auth Service tokens, so service-to-service means signing in as a service account (`Services:MccIntake:ClientId` and `ClientSecret`) at `Services:Auth:BaseUrl`. `ServiceTokenProvider` caches the token until a minute before it expires. The response contracts in `Infrastructure/MccIntake/MccIntakeContracts.cs` are copied from the MCC and Intake Service repository; the commit is in the file. The worker stays idle, and logs why, until `Services:MccIntake:BaseUrl`, `ClientId`, `ClientSecret` and `Services:Auth:BaseUrl` are all set. Attempts are counted in `traceability_upstream_resolutions_total{status}`.
+
 > **Never commit secrets.** Use `.env` (git-ignored) for Docker Compose, user secrets for `dotnet run`, App Service settings for Azure, and GitHub environment secrets for CI/CD.
 
 ---
@@ -172,10 +191,12 @@ A dead letter is the original message unchanged (key, value and headers) plus `x
 | GET | `/api/batches/{batchId}` | One batch's full record: summary, upstream status, four checkpoint sections (MCC, Factory Intake, Processing, Quality Lab) each with a state, records and deviations, and links from dispatch to tanks, consignments and societies. 404 problem response if no batch has that ID (QualityControlOfficer or SystemAdministrator) |
 | GET | `/api/batches?dispatchRef=…` or `?batchReference=WR-…` | Summaries of the matching batches, oldest first. One dispatch can feed several batches, so this is always a list; no match is an empty list, not a 404. With both filters, a batch must match both; with neither, 400 (QualityControlOfficer or SystemAdministrator) |
 | GET | `/api/dashboard/summary` | Pending, cleared, failed and on-hold counts for today and for the range, and deviations per checkpoint over the range (QualityControlOfficer or SystemAdministrator) |
-| GET | `/api/dashboard/trend` | Per day and product line: batch, cleared and failed counts and `failRate` = failed ÷ (cleared + failed), null when nothing was decided (QualityControlOfficer or SystemAdministrator) |
+| GET | `/api/dashboard/deviations` | Deviations per checkpoint over the range, always four in stage order: the summary's figures on their own, as `checkpoints` (QualityControlOfficer or SystemAdministrator) |
+| GET | `/api/dashboard/trend` | Per day and product line: batch, cleared and failed counts and `failRate` = failed ÷ batches, pending and on-hold batches included, so a day still being decided reads low (QualityControlOfficer or SystemAdministrator) |
 | GET | `/api/dashboard/failure-reasons` | Deviation reason codes over the range, most frequent first (QualityControlOfficer or SystemAdministrator) |
 | GET | `/api/dashboard/recent-failures?limit=…` | The latest failed batches, newest first, each with its reason codes and `tracePath` to its batch record. `limit` 1–50, default 10 (QualityControlOfficer or SystemAdministrator) |
 | GET | `/api/dashboard/societies?limit=…` | The most marginal societies behind the batches in range: the closest their milk came to a rejection limit at the MCC gate, and on which measure. Unscored societies last. `limit` 1–50, default 10 (QualityControlOfficer or SystemAdministrator) |
+| GET | `/api/dashboard/marginal-societies?limit=…` | The same as `/api/dashboard/societies`, under the path the frontend's dashboard asks for (QualityControlOfficer or SystemAdministrator) |
 
 Feature endpoints are added by the developer and documented here.
 

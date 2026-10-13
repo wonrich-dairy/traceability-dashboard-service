@@ -41,15 +41,27 @@ public class DashboardService(TraceabilityDbContext db, FactoryCalendar calendar
                 Failed = rangeRows.Sum(r => r.Failed),
                 OnHold = rangeRows.Sum(r => r.OnHold),
             },
-            Deviations =
-            [
-                new() { Checkpoint = Checkpoint.Mcc, Count = rangeRows.Sum(r => r.Mcc) },
-                new() { Checkpoint = Checkpoint.Intake, Count = rangeRows.Sum(r => r.Intake) },
-                new() { Checkpoint = Checkpoint.Processing, Count = rangeRows.Sum(r => r.Processing) },
-                new() { Checkpoint = Checkpoint.Lab, Count = rangeRows.Sum(r => r.Lab) },
-            ],
+            Deviations = DeviationsByCheckpoint(rangeRows),
         }, filter, cancellationToken);
     }
+
+    public async Task<DashboardDeviationsDto> GetDeviationsAsync(DashboardFilter filter, CancellationToken cancellationToken = default)
+    {
+        var rangeRows = await Counts(
+            Aggregates(filter).Where(a => a.Date >= filter.From && a.Date <= filter.To), cancellationToken);
+
+        return await WithFreshness(
+            new DashboardDeviationsDto { Checkpoints = DeviationsByCheckpoint(rangeRows) }, filter, cancellationToken);
+    }
+
+    // Always four, in stage order, so a checkpoint with none shows 0 rather than going missing.
+    private static List<CheckpointDeviationDto> DeviationsByCheckpoint(List<CountsRow> rows) =>
+    [
+        new() { Checkpoint = Checkpoint.Mcc, Count = rows.Sum(r => r.Mcc) },
+        new() { Checkpoint = Checkpoint.Intake, Count = rows.Sum(r => r.Intake) },
+        new() { Checkpoint = Checkpoint.Processing, Count = rows.Sum(r => r.Processing) },
+        new() { Checkpoint = Checkpoint.Lab, Count = rows.Sum(r => r.Lab) },
+    ];
 
     public async Task<DashboardTrendDto> GetTrendAsync(DashboardFilter filter, CancellationToken cancellationToken = default)
     {
@@ -78,7 +90,7 @@ public class DashboardService(TraceabilityDbContext db, FactoryCalendar calendar
                 BatchCount = d.Batches,
                 ClearedCount = d.Cleared,
                 FailedCount = d.Failed,
-                FailRate = FailRate.Of(d.Cleared, d.Failed),
+                FailRate = FailRate.Of(d.Batches, d.Failed),
             })],
         }, filter, cancellationToken);
     }
