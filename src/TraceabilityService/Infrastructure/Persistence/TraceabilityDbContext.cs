@@ -19,6 +19,7 @@ public class TraceabilityDbContext(DbContextOptions<TraceabilityDbContext> optio
     public DbSet<PendingDispatchEvent> PendingDispatchEvents => Set<PendingDispatchEvent>();
     public DbSet<DailyQualityAggregate> DailyQualityAggregates => Set<DailyQualityAggregate>();
     public DbSet<DailyReasonCodeAggregate> DailyReasonCodeAggregates => Set<DailyReasonCodeAggregate>();
+    public DbSet<DailySocietyAggregate> DailySocietyAggregates => Set<DailySocietyAggregate>();
     public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

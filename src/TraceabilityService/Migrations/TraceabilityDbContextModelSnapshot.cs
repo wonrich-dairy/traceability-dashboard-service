@@ -238,6 +238,57 @@ namespace TraceabilityService.Migrations
                     b.ToTable("daily_reason_code_aggregates", (string)null);
                 });
 
+            modelBuilder.Entity("TraceabilityService.Domain.Entities.DailySocietyAggregate", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AcceptedCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<decimal>("FatPercentTotal")
+                        .HasPrecision(12, 4)
+                        .HasColumnType("decimal(12,4)");
+
+                    b.Property<int>("MarginalCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RejectedCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SocietyCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<string>("SocietyName")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<decimal>("SnfTotal")
+                        .HasPrecision(12, 4)
+                        .HasColumnType("decimal(12,4)");
+
+                    b.Property<int>("TotalConsignments")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Date", "SocietyCode")
+                        .IsUnique();
+
+                    b.ToTable("daily_society_aggregates", (string)null);
+                });
+
             modelBuilder.Entity("TraceabilityService.Domain.Entities.DeviationRecord", b =>
                 {
                     b.Property<int>("Id")

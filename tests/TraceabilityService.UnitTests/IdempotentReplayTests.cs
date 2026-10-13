@@ -174,7 +174,7 @@ public sealed class IdempotentReplayTests : IDisposable
         var unitOfWork = new EfEventUnitOfWork(db, TimeProvider.System);
 
         var consumed = new ConsumedEvent(
-            Topic, 0, 0, BatchId, "MilkAllocatedToMixingTank", eventId, "corr-test", "{}");
+            Topic, 0, 0, BatchId, nameof(MilkAllocatedToMixingTankEvent), eventId, "corr-test", "{}");
 
         // Group A rejects duplicate
         var allowedGroupA = await unitOfWork.BeginAsync(ConsumerGroup, consumed, CancellationToken.None);
@@ -255,7 +255,7 @@ public sealed class IdempotentReplayTests : IDisposable
 
         var headers = new Headers
         {
-            { "eventType", Encoding.UTF8.GetBytes("MilkAllocatedToMixingTank") },
+            { "eventType", Encoding.UTF8.GetBytes(nameof(MilkAllocatedToMixingTankEvent)) },
             { "eventId", Encoding.UTF8.GetBytes(eventId.ToString()) },
             { "x-correlation-id", Encoding.UTF8.GetBytes("corr-replay-test") },
         };

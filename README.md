@@ -128,6 +128,9 @@ Kafka is then reached at `localhost:29092`, the default in `appsettings.json`.
 | `Kafka:Topics:BatchDeterminations` | `Kafka__Topics__BatchDeterminations` | | Quality Lab's determinations, default `wonrich.quality-lab.batch-determinations.v1` |
 | `Kafka:Topics:BatchDeterminationsDeadLetter` | `Kafka__Topics__BatchDeterminationsDeadLetter` | | Where determinations that cannot be applied are parked, default `wonrich.dlq.traceability-batch-determinations.v1` |
 | `Kafka:ConsumerGroups:BatchDeterminations` | `Kafka__ConsumerGroups__BatchDeterminations` | | Consumer group for the determinations, default `traceability-batch-determinations` |
+| `Kafka:Topics:ConsignmentTested` | `Kafka__Topics__ConsignmentTested` | | MCC gate test verdicts, default `wonrich.mcc.consignment-tested.v1` |
+| `Kafka:Topics:ConsignmentTestedDeadLetter` | `Kafka__Topics__ConsignmentTestedDeadLetter` | | Where unprocessable gate tests are parked, default `wonrich.dlq.traceability-consignment-tested.v1` |
+| `Kafka:ConsumerGroups:ConsignmentTested` | `Kafka__ConsumerGroups__ConsignmentTested` | | Consumer group for gate test events, default `traceability-consignment-tested` |
 | `Kafka:Consumers:Enabled` | `Kafka__Consumers__Enabled` | | `false` stops all consumers from starting (the integration tests set it). Default `true` |
 | `Traceability:FactoryFacility` | `Traceability__FactoryFacility` | | The facility batches created from Processing's events get, since those events carry none. Must match the `facility` claim of the factory's users. Default `FACTORY-01` |
 | `Services:MccIntake:BaseUrl` | `Services__MccIntake__BaseUrl` | `MCC_INTAKE_BASE_URL` | MCC and Intake Service base URL (SCRUM-12, SCRUM-132). Empty leaves upstream resolution off |
@@ -205,6 +208,7 @@ The MCC and Intake Service accepts the shared Auth Service tokens, so service-to
 | GET | `/api/dashboard/recent-failures?limit=…` | The latest failed batches, newest first, each with its reason codes and `tracePath` to its batch record. `limit` 1–50, default 10 (QualityControlOfficer or SystemAdministrator) |
 | GET | `/api/dashboard/societies?limit=…` | The most marginal societies behind the batches in range: the closest their milk came to a rejection limit at the MCC gate, and on which measure. Unscored societies last. `limit` 1–50, default 10 (QualityControlOfficer or SystemAdministrator) |
 | GET | `/api/dashboard/marginal-societies?limit=…` | The same as `/api/dashboard/societies`, under the path the frontend's dashboard asks for (QualityControlOfficer or SystemAdministrator) |
+| GET | `/api/dashboard/society-performance` | Every society tested in the date range, with acceptance rate, accepted/rejected counts, average fat/SNF and marginal count from MCC gate-test events (QualityControlOfficer or SystemAdministrator) |
 
 Feature endpoints are added by the developer and documented here.
 

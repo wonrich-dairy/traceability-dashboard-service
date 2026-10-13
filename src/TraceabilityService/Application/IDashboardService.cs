@@ -20,4 +20,7 @@ public interface IDashboardService
     // The most marginal societies behind the batches in range, at most limit of them.
     Task<DashboardSocietiesDto> GetSocietiesAsync(
         DashboardFilter filter, int limit, CancellationToken cancellationToken = default);
+
+    Task<DashboardSocietyPerformanceDto> GetSocietyPerformanceAsync(
+        DashboardFilter filter, CancellationToken cancellationToken = default);
 }

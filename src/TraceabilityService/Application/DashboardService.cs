@@ -215,6 +215,44 @@ public class DashboardService(TraceabilityDbContext db, FactoryCalendar calendar
         return await WithFreshness(new DashboardSocietiesDto { Societies = societies }, filter, cancellationToken);
     }
 
+    public async Task<DashboardSocietyPerformanceDto> GetSocietyPerformanceAsync(
+        DashboardFilter filter, CancellationToken cancellationToken = default)
+    {
+        var rows = await _db.DailySocietyAggregates.AsNoTracking()
+            .Where(a => a.Date >= filter.From && a.Date <= filter.To)
+            .GroupBy(a => a.SocietyCode)
+            .Select(g => new
+            {
+                SocietyCode = g.Key,
+                SocietyName = g.OrderByDescending(a => a.Date).Select(a => a.SocietyName).FirstOrDefault(),
+                Total = g.Sum(a => a.TotalConsignments),
+                Accepted = g.Sum(a => a.AcceptedCount),
+                Rejected = g.Sum(a => a.RejectedCount),
+                FatTotal = g.Sum(a => a.FatPercentTotal),
+                SnfTotal = g.Sum(a => a.SnfTotal),
+                Marginal = g.Sum(a => a.MarginalCount),
+            })
+            .OrderByDescending(a => a.Total == 0 ? 0d : a.Accepted / (double)a.Total)
+            .ThenBy(a => a.SocietyCode)
+            .ToListAsync(cancellationToken);
+
+        return await WithFreshness(new DashboardSocietyPerformanceDto
+        {
+            Societies = [.. rows.Select(row => new SocietyPerformanceDto
+            {
+                SocietyCode = row.SocietyCode,
+                SocietyName = row.SocietyName,
+                TotalConsignments = row.Total,
+                Accepted = row.Accepted,
+                Rejected = row.Rejected,
+                AcceptanceRate = row.Total == 0 ? 0d : row.Accepted / (double)row.Total,
+                AverageFatPercent = row.Total == 0 ? null : row.FatTotal / row.Total,
+                AverageSnf = row.Total == 0 ? null : row.SnfTotal / row.Total,
+                MarginalCount = row.Marginal,
+            })],
+        }, filter, cancellationToken);
+    }
+
     private IQueryable<DailyQualityAggregate> Aggregates(DashboardFilter filter)
     {
         var query = _db.DailyQualityAggregates.AsNoTracking();
