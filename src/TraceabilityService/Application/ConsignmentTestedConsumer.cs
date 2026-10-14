@@ -66,5 +66,9 @@ public sealed class ConsignmentTestedHandler(
         aggregate.SnfTotal += tested.Panel.Snf;
         if (tested.IsMarginal) aggregate.MarginalCount++;
         aggregate.UpdatedAt = time.GetUtcNow().UtcDateTime;
+
+        // The unit of work only commits the transaction; like every other handler, this one saves
+        // its own changes, or the aggregate is dropped while the message is still marked processed.
+        await db.SaveChangesAsync(cancellationToken);
     }
 }
