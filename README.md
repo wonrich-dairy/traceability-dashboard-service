@@ -189,6 +189,7 @@ The MCC and Intake Service accepts the shared Auth Service tokens, so service-to
 | GET | `/metrics` | Prometheus metrics (anonymous) |
 | GET | `/api/me` | The caller's user ID, name, role and facility from the JWT (requires a token) |
 | GET | `/api/batches/{batchId}` | One batch's full record: summary, upstream status, four checkpoint sections (MCC, Factory Intake, Processing, Quality Lab) each with a state, records and deviations, and links from dispatch to tanks, consignments and societies. 404 problem response if no batch has that ID (QualityControlOfficer or SystemAdministrator) |
+| GET | `/api/batches/{batchId}/trace` | The batch's backward trace (SCRUM-134): its four checkpoints in stage order, each `WithinSpec`, `Deviation`, `MissingData` or `NotYetReached`, the checkpoint the first deviation came from (`originCheckpoint`, `origin`), its Processing holds, and its tanks and societies in the upstream snapshot's order. 404 problem response if no batch has that ID (QualityControlOfficer or SystemAdministrator) |
 | GET | `/api/batches?dispatchRef=…` or `?batchReference=WR-…` | Summaries of the matching batches, oldest first. One dispatch can feed several batches, so this is always a list; no match is an empty list, not a 404. With both filters, a batch must match both; with neither, 400 (QualityControlOfficer or SystemAdministrator) |
 | GET | `/api/dashboard/summary` | Pending, cleared, failed and on-hold counts for today and for the range, and deviations per checkpoint over the range (QualityControlOfficer or SystemAdministrator) |
 | GET | `/api/dashboard/deviations` | Deviations per checkpoint over the range, always four in stage order: the summary's figures on their own, as `checkpoints` (QualityControlOfficer or SystemAdministrator) |
@@ -209,6 +210,18 @@ Each checkpoint section of a batch record has a `state`:
 | `NoDataReceived` | No data although the batch is past this point: a later checkpoint has data, or the status is past it. MCC and Factory Intake with no data are always this: a batch only exists once it has passed factory intake. The `upstream` block says why their data is missing (lookup not run yet, `PendingRetry`, or `Unavailable`) |
 
 The MCC and Factory Intake sections and the links come from the upstream snapshot, whose JSON shape is a contract described in [docs/schema.md](docs/schema.md#upstream_snapshotspayload). `BatchRecordAssembler` builds the response without touching the database, so these rules are covered by unit tests.
+
+The backward trace answers "where did this batch go wrong?":
+
+| Field | Rule |
+|---|---|
+| `chain` | Always four entries, MCC, Factory Intake, Processing, Quality Lab, never omitted. `Deviation` if the checkpoint reported any; otherwise the batch record's state rule above: `WithinSpec` for `Recorded`, `MissingData` (with `missingReason`) for `NoDataReceived`, and `NotYetReached` |
+| `originCheckpoint` | The **first checkpoint in stage order** that deviated, not the deviation with the earliest time: milk that left the MCC warm is the origin even when Processing and the lab deviated too. `null`, with `hasDeviation: false`, for a clean batch |
+| `origin` | The first deviation at that checkpoint: parameter, observed value, limit, time, reason code and the upstream event's ID |
+| Ordering | Deviations by (`occurredAt`, `sourceEventId`), so two at the same time always come back in the same order. Tanks, consignments and `societies` exactly as the snapshot lists them, never sorted |
+| `status`, `labResult` | As stored by the consumers (`BatchStatusRules`, SCRUM-130) and `LabResults`; the trace computes no status of its own. A hold is open by `BatchStatusRules.OpenHolds` |
+
+The same rows always give the same response. `BackwardTraceAssembler` builds it without the database or the clock, so these rules are unit-tested; `BatchTraceService` loads it in five queries (batch, timeline events, deviations, active determinations, snapshot) whatever the batch holds, and one for an unknown batch. `BatchTraceEndpointTests.A_trace_takes_five_queries_and_an_unknown_batch_one` asserts that and writes the SQL to the test output.
 
 The `/api/batches` and `/api/dashboard` endpoints use the `QualityControl` policy (`TraceabilityPolicies.QualityControl`): no token is 401, and a valid token with any role other than `QualityControlOfficer` or `SystemAdministrator` is 403.
 
