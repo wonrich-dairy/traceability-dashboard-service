@@ -97,7 +97,7 @@ public class BackwardTraceAssemblerTests
         Assert.Null(trace.OriginCheckpoint);
         Assert.Null(trace.Origin);
         Assert.Equal(
-            [Checkpoint.Mcc, Checkpoint.Intake, Checkpoint.Processing, Checkpoint.Lab],
+            [Checkpoint.Lab, Checkpoint.Processing, Checkpoint.Intake, Checkpoint.Mcc],
             trace.Chain.Select(c => c.Checkpoint));
         Assert.All(trace.Chain, c => Assert.Equal(TraceCheckpointStatus.WithinSpec, c.Status));
         Assert.All(trace.Chain, c => Assert.Empty(c.Deviations));
@@ -120,7 +120,7 @@ public class BackwardTraceAssemblerTests
 
         Assert.Equal(4, trace.Chain.Count);
         Assert.Equal(
-            [TraceCheckpointStatus.MissingData, TraceCheckpointStatus.MissingData, TraceCheckpointStatus.WithinSpec, TraceCheckpointStatus.WithinSpec],
+            [TraceCheckpointStatus.WithinSpec, TraceCheckpointStatus.WithinSpec, TraceCheckpointStatus.MissingData, TraceCheckpointStatus.MissingData],
             trace.Chain.Select(c => c.Status));
         Assert.NotNull(Link(trace, Checkpoint.Mcc).MissingReason);
         Assert.Null(trace.Links);
@@ -145,8 +145,8 @@ public class BackwardTraceAssemblerTests
         Assert.True(root.TryGetProperty("links", out _));
 
         var chain = root.GetProperty("chain").EnumerateArray().ToList();
-        Assert.Equal(["Mcc", "Intake", "Processing", "Lab"], chain.Select(c => c.GetProperty("checkpoint").GetString()));
-        foreach (var missing in chain.Take(2))
+        Assert.Equal(["Lab", "Processing", "Intake", "Mcc"], chain.Select(c => c.GetProperty("checkpoint").GetString()));
+        foreach (var missing in chain.Skip(2))
         {
             Assert.Equal("MissingData", missing.GetProperty("status").GetString());
             Assert.True(missing.TryGetProperty("firstRecordedAt", out var first));
@@ -163,7 +163,7 @@ public class BackwardTraceAssemblerTests
         var trace = Assemble(BatchStatus.Processing, [ProcessingEvent], []);
 
         Assert.Equal(
-            [TraceCheckpointStatus.WithinSpec, TraceCheckpointStatus.WithinSpec, TraceCheckpointStatus.WithinSpec, TraceCheckpointStatus.NotYetReached],
+            [TraceCheckpointStatus.NotYetReached, TraceCheckpointStatus.WithinSpec, TraceCheckpointStatus.WithinSpec, TraceCheckpointStatus.WithinSpec],
             trace.Chain.Select(c => c.Status));
         Assert.Null(Link(trace, Checkpoint.Lab).MissingReason);
     }

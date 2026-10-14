@@ -138,7 +138,7 @@ public class BatchTraceEndpointTests(TraceabilityApiFactory factory, ITestOutput
         Assert.EndsWith("Z", origin.GetProperty("occurredAt").GetString());
 
         Assert.Equal(
-            ["WithinSpec", "WithinSpec", "Deviation", "Deviation"],
+            ["Deviation", "Deviation", "WithinSpec", "WithinSpec"],
             trace.GetProperty("chain").EnumerateArray().Select(c => c.GetProperty("status").GetString()));
 
         // The hold's payload is read back for the trace (the other events' are not fetched).
@@ -166,9 +166,9 @@ public class BatchTraceEndpointTests(TraceabilityApiFactory factory, ITestOutput
 
         var chain = trace.GetProperty("chain").EnumerateArray().ToList();
         Assert.Equal(
-            ["Deviation", "WithinSpec", "Deviation", "Deviation"],
+            ["Deviation", "Deviation", "WithinSpec", "Deviation"],
             chain.Select(c => c.GetProperty("status").GetString()));
-        Assert.Equal(75.00m, Assert.Single(chain[2].GetProperty("deviations").EnumerateArray()).GetProperty("observedValue").GetDecimal());
+        Assert.Equal(75.00m, Assert.Single(chain[1].GetProperty("deviations").EnumerateArray()).GetProperty("observedValue").GetDecimal());
     }
 
     [Fact]
@@ -178,11 +178,11 @@ public class BatchTraceEndpointTests(TraceabilityApiFactory factory, ITestOutput
         var trace = json.RootElement;
 
         var chain = trace.GetProperty("chain").EnumerateArray().ToList();
-        Assert.Equal(["Mcc", "Intake", "Processing", "Lab"], chain.Select(c => c.GetProperty("checkpoint").GetString()));
+        Assert.Equal(["Lab", "Processing", "Intake", "Mcc"], chain.Select(c => c.GetProperty("checkpoint").GetString()));
         Assert.Equal(
-            ["MissingData", "MissingData", "WithinSpec", "Deviation"],
+            ["Deviation", "WithinSpec", "MissingData", "MissingData"],
             chain.Select(c => c.GetProperty("status").GetString()));
-        Assert.Equal(JsonValueKind.String, chain[0].GetProperty("missingReason").ValueKind);
+        Assert.Equal(JsonValueKind.String, chain[3].GetProperty("missingReason").ValueKind);
         Assert.Equal("Lab", trace.GetProperty("originCheckpoint").GetString());
 
         // Written as null and empty, not left out.
