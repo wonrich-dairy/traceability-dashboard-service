@@ -490,3 +490,7 @@ coverage-report/
 
 # local secrets
 secrets.env
+
+# Local machine and NuGet state
+/Library/
+**/.local/

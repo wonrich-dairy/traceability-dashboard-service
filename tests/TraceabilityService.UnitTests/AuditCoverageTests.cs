@@ -53,7 +53,7 @@ public class AuditCoverageTests
         var own = AuditCoverage.Covered.Where(c => c.Source == AuditSource.Traceability).ToList();
 
         Assert.Equal(
-            [AuditActions.BatchRecordOpened, AuditActions.BatchSearchExported, AuditActions.BatchTraceOpened],
+            [AuditActions.BatchRecordOpened, AuditActions.BatchSearchExported, AuditActions.BatchTraceOpened, AuditActions.DeadLetterReplayed, AuditActions.ProjectionRebuilt],
             own.Select(c => c.Action).Order());
         Assert.All(own, c => Assert.Null(c.Checkpoint));
         Assert.Equal(BatchSearchService.ExportAction, AuditActions.BatchSearchExported);

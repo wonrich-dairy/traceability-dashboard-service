@@ -30,7 +30,7 @@ public sealed class EventProcessor(
 
     public KafkaConsumerOptions Options => options;
 
-    public async Task ProcessAsync(ConsumeResult<string, string> result, CancellationToken cancellationToken)
+    public async Task<EventOutcome> ProcessAsync(ConsumeResult<string, string> result, CancellationToken cancellationToken)
     {
         // Read from the header directly, so the scope is there even for a message that
         // cannot be parsed. With IncludeScopes on, every JSON log line carries it.
@@ -51,7 +51,7 @@ public sealed class EventProcessor(
         catch (Exception ex) when (CanNeverSucceed(ex))
         {
             await DeadLetterAsync(result, Describe(ex), attempts: 1, cancellationToken);
-            return;
+            return EventOutcome.DeadLettered;
         }
 
         using var eventScope = logger.BeginScope(new Dictionary<string, object?>
@@ -66,7 +66,7 @@ public sealed class EventProcessor(
             {
                 var outcome = await HandleOnceAsync(consumed, cancellationToken);
                 logger.LogInformation("{EventType} {Outcome}, key {Key}", consumed.EventType, outcome, consumed.Key);
-                return;
+                return outcome;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -75,7 +75,7 @@ public sealed class EventProcessor(
             catch (Exception ex) when (CanNeverSucceed(ex))
             {
                 await DeadLetterAsync(result, Describe(ex), attempt, cancellationToken);
-                return;
+                return EventOutcome.DeadLettered;
             }
             catch (Exception ex) when (attempt <= options.MaxRetries)
             {
@@ -86,7 +86,7 @@ public sealed class EventProcessor(
             catch (Exception ex)
             {
                 await DeadLetterAsync(result, Describe(ex), attempt, cancellationToken);
-                return;
+                return EventOutcome.DeadLettered;
             }
         }
     }
@@ -163,5 +163,8 @@ public enum EventOutcome
     Handled,
 
     // Already handled by this consumer group: the upstream relays deliver at least once.
-    Duplicate
+    Duplicate,
+
+    // Parked on the dead-letter topic rather than applied to the projection.
+    DeadLettered
 }

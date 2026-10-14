@@ -66,4 +66,21 @@ public class TraceabilityAuthExtensionsTests
             [WonrichRoles.QualityControlOfficer, WonrichRoles.SystemAdministrator],
             roles.AllowedRoles.Order());
     }
+
+    [Fact]
+    public async Task Admin_only_policy_requires_exactly_system_administrator()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddTraceabilityAuthorization();
+        var provider = services.BuildServiceProvider().GetRequiredService<IAuthorizationPolicyProvider>();
+
+        var policy = await provider.GetPolicyAsync(TraceabilityPolicies.AdminOnly);
+
+        Assert.NotNull(policy);
+        var roles = Assert.Single(policy.Requirements.OfType<RolesAuthorizationRequirement>());
+        Assert.Equal(
+            [WonrichRoles.SystemAdministrator],
+            roles.AllowedRoles.Order());
+    }
 }

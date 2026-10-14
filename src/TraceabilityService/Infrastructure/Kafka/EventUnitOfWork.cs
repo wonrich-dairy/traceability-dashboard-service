@@ -34,7 +34,18 @@ public sealed class EfEventUnitOfWork(TraceabilityDbContext db, TimeProvider tim
     {
         // READ COMMITTED: a handler that waits for a batch's row lock then reads what the other
         // consumer committed meanwhile (see BatchLocks), and no gap locks are taken.
-        _transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
+        _transaction = db.Database.IsRelational()
+            ? await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken)
+            : null;
+
+        if (await db.ProcessedMessages.AnyAsync(m => m.ConsumerGroup == consumerGroup && m.SourceEventId == consumed.EventId, cancellationToken))
+        {
+            if (_transaction is not null)
+            {
+                await _transaction.RollbackAsync(cancellationToken);
+            }
+            return false;
+        }
 
         db.ProcessedMessages.Add(new ProcessedMessage
         {
@@ -49,17 +60,23 @@ public sealed class EfEventUnitOfWork(TraceabilityDbContext db, TimeProvider tim
             await db.SaveChangesAsync(cancellationToken);
             return true;
         }
-        catch (DbUpdateException ex) when (ex.InnerException is MySqlException { ErrorCode: MySqlErrorCode.DuplicateKeyEntry })
+        catch (DbUpdateException ex) when (IsDuplicate(ex))
         {
             db.ChangeTracker.Clear();
-            await _transaction.RollbackAsync(cancellationToken);
+            if (_transaction is not null)
+            {
+                await _transaction.RollbackAsync(cancellationToken);
+            }
             return false;
         }
     }
 
+    private static bool IsDuplicate(DbUpdateException ex) =>
+        ex.InnerException is MySqlException { ErrorCode: MySqlErrorCode.DuplicateKeyEntry }
+        || ex.InnerException?.Message.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase) == true;
+
     public Task CommitAsync(CancellationToken cancellationToken) =>
-        _transaction?.CommitAsync(cancellationToken)
-        ?? throw new InvalidOperationException("CommitAsync called before BeginAsync.");
+        _transaction?.CommitAsync(cancellationToken) ?? Task.CompletedTask;
 
     // An uncommitted transaction is rolled back when it is disposed.
     public ValueTask DisposeAsync() => _transaction?.DisposeAsync() ?? ValueTask.CompletedTask;

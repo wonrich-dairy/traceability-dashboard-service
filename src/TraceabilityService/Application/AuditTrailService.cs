@@ -144,6 +144,22 @@ public class AuditTrailService(TraceabilityDbContext db, TimeProvider time) : IA
         await _db.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task RecordAdminActionAsync(
+        string action, string entityType, string entityId, object? details, AuditRequester requester, CancellationToken cancellationToken = default)
+    {
+        _db.AuditEntries.Add(new AuditEntry
+        {
+            OccurredAt = _time.GetUtcNow().UtcDateTime,
+            Actor = Truncate(requester.UserId, 100),
+            Action = action,
+            EntityType = entityType,
+            EntityId = Truncate(entityId, 100),
+            Details = details is null ? null : JsonSerializer.Serialize(details, AuditJson),
+            CorrelationId = requester.CorrelationId,
+        });
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
     public static AuditTrailEntryDto ToDto(AuditTrailRow row) => new()
     {
         Id = row.EntryId,
