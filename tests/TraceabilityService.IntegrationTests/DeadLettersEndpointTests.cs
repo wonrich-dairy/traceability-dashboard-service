@@ -25,6 +25,8 @@ public sealed class DeadLettersEndpointTests(KafkaApiFactory factory)
 
         try
         {
+            await WaitUntilTopicIsMissingAsync(admin, MissingTopic);
+
             var eventId = Guid.NewGuid().ToString();
             using (var producer = new ProducerBuilder<string, string>(new ProducerConfig
             {
@@ -77,5 +79,23 @@ public sealed class DeadLettersEndpointTests(KafkaApiFactory factory)
                 // Kafka re-created the topic already (auto-create or a delete still finishing): nothing to do.
             }
         }
+    }
+
+    private static async Task WaitUntilTopicIsMissingAsync(IAdminClient admin, string topic)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (DateTime.UtcNow < deadline)
+        {
+            var metadata = admin.GetMetadata(topic, TimeSpan.FromSeconds(2));
+            var topicMetadata = metadata.Topics.SingleOrDefault(t => t.Topic == topic);
+            if (topicMetadata is null || topicMetadata.Error.Code == ErrorCode.UnknownTopicOrPart)
+            {
+                return;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(100));
+        }
+
+        throw new TimeoutException($"Kafka topic '{topic}' was not deleted within 10 seconds.");
     }
 }

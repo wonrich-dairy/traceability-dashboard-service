@@ -170,6 +170,7 @@ jobs:
       # The first pass reports every severity to the Security tab and never fails; the second is
       # the gate, High / Critical with a fix available. Triaged exceptions go in .trivyignore.
       - name: Image scan report (all severities)
+        id: image_scan
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ env.IMAGE_NAME }}:ci
@@ -178,7 +179,7 @@ jobs:
           exit-code: "0"
 
       - name: Upload image scan to Security tab
-        if: always()
+        if: always() && steps.image_scan.outcome == 'success'
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-results.sarif

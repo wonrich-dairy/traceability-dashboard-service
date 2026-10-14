@@ -11,8 +11,8 @@ namespace TraceabilityService.IntegrationTests;
 /// <summary>
 /// The real app against a real broker and MySQL, with its consumers running (SCRUM-130). Its own
 /// containers, so the consumers never touch the shared <see cref="TraceabilityApiFactory"/>
-/// database. The topics are created before the app starts, as wonrich-infra creates them: the
-/// brokers in every environment have auto-creation off.
+/// database. The topics are created before the app starts, as wonrich-infra creates them; broker
+/// auto-creation is disabled to match the deployed environments.
 /// </summary>
 public class KafkaApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
@@ -32,7 +32,9 @@ public class KafkaApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         .WithPassword("trc_test_pwd")
         .Build();
 
-    private readonly KafkaContainer _kafka = new KafkaBuilder("confluentinc/cp-kafka:7.6.1").Build();
+    private readonly KafkaContainer _kafka = new KafkaBuilder("confluentinc/cp-kafka:7.6.1")
+        .WithEnvironment("KAFKA_AUTO_CREATE_TOPICS_ENABLE", "false")
+        .Build();
 
     public string BootstrapServers { get; private set; } = "";
 
