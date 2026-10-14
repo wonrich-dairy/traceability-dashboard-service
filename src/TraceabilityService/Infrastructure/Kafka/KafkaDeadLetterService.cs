@@ -64,7 +64,11 @@ public class KafkaDeadLetterService(
         foreach (var mapping in mappings)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var items = ReadDeadLettersFromTopic(mapping.ConsumerGroup, mapping.DeadLetterTopic, cancellationToken);
+            var items = ReadDeadLettersFromTopic(
+                mapping.ConsumerGroup,
+                mapping.DeadLetterTopic,
+                missingTopicIsError: !string.IsNullOrWhiteSpace(consumerGroup),
+                cancellationToken);
             results.AddRange(items);
         }
 
@@ -72,9 +76,24 @@ public class KafkaDeadLetterService(
     }
 
     private List<DeadLetterMessageDto> ReadDeadLettersFromTopic(
-        string consumerGroup, string dlqTopic, CancellationToken cancellationToken)
+        string consumerGroup, string dlqTopic, bool missingTopicIsError, CancellationToken cancellationToken)
     {
         var results = new List<DeadLetterMessageDto>();
+        var partitionIds = GetPartitionIds(dlqTopic);
+        if (partitionIds is null)
+        {
+            if (missingTopicIsError)
+            {
+                throw new KeyNotFoundException(
+                    $"Dead-letter topic '{dlqTopic}' for consumer group '{consumerGroup}' does not exist.");
+            }
+
+            logger.LogWarning(
+                "Skipping dead-letter inspection for consumer group {ConsumerGroup}: topic {DeadLetterTopic} does not exist.",
+                consumerGroup,
+                dlqTopic);
+            return results;
+        }
 
         var consumerConfig = KafkaClientSettings.Apply(new ConsumerConfig
         {
@@ -88,7 +107,7 @@ public class KafkaDeadLetterService(
             .SetErrorHandler((_, e) => logger.LogWarning("DLQ inspect Kafka error: {Reason}", e.Reason))
             .Build();
 
-        foreach (var partitionId in GetPartitionIds(dlqTopic))
+        foreach (var partitionId in partitionIds)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var partition = new TopicPartition(dlqTopic, partitionId);
@@ -189,14 +208,20 @@ public class KafkaDeadLetterService(
         return results;
     }
 
-    private IReadOnlyList<int> GetPartitionIds(string topic)
+    private IReadOnlyList<int>? GetPartitionIds(string topic)
     {
         using var admin = new AdminClientBuilder(KafkaClientSettings.Apply(new AdminClientConfig(), configuration)).Build();
         var metadata = admin.GetMetadata(topic, TimeSpan.FromSeconds(10));
         var topicMetadata = metadata.Topics.FirstOrDefault(t => string.Equals(t.Topic, topic, StringComparison.Ordinal));
-        if (topicMetadata is null || topicMetadata.Error.Code != ErrorCode.NoError)
+        if (topicMetadata is null || topicMetadata.Error.Code == ErrorCode.UnknownTopicOrPart)
         {
-            throw new InvalidOperationException($"Could not discover partitions for Kafka topic '{topic}'.");
+            return null;
+        }
+
+        if (topicMetadata.Error.Code != ErrorCode.NoError)
+        {
+            throw new InvalidOperationException(
+                $"Could not discover partitions for Kafka topic '{topic}': {topicMetadata.Error.Reason}.");
         }
 
         return topicMetadata.Partitions.Select(p => p.PartitionId).Order().ToArray();
@@ -354,4 +379,3 @@ public class KafkaDeadLetterService(
         };
     }
 }
-
