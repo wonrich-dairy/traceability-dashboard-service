@@ -25,15 +25,10 @@ public class BatchTraceResponse : BatchSummaryDto
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public TraceDeviation? Origin{get; set;}
 
-<<<<<<< Updated upstream
-    // Always four, in stage order: Mcc, Intake, Processing, Lab. A checkpoint with no data
-    // is MissingData or NotYetReached, never left out.
-=======
     /// <summary>
     /// Always four, in backward-trace order: Lab, Processing, Intake, Mcc. A checkpoint with no data
     /// is MissingData or NotYetReached, never left out.
     /// </summary>
->>>>>>> Stashed changes
     public List<TraceCheckpoint> Chain{get; set;} = [];
 
     // Processing holds, in the order they were raised.
