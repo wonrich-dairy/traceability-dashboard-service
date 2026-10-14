@@ -81,6 +81,43 @@ public sealed class DeadLettersEndpointTests(KafkaApiFactory factory)
         }
     }
 
+    [Fact]
+    public async Task Consignment_tested_dead_letters_can_be_listed_by_group()
+    {
+        var eventId = Guid.NewGuid().ToString();
+        using (var producer = new ProducerBuilder<string, string>(new ProducerConfig
+        {
+            BootstrapServers = factory.BootstrapServers,
+        }).Build())
+        {
+            await producer.ProduceAsync("wonrich.dlq.traceability-consignment-tested.v1", new Message<string, string>
+            {
+                Key = "SOC-01",
+                Value = """{"eventId":"test"}""",
+                Headers = new Headers
+                {
+                    { "eventId", Encoding.UTF8.GetBytes(eventId) },
+                    { "x-correlation-id", Encoding.UTF8.GetBytes(eventId) },
+                    { "x-failure-reason", Encoding.UTF8.GetBytes("integration test") },
+                },
+            });
+        }
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            TestTokens.Create(role: WonrichRoles.SystemAdministrator));
+
+        var response = await client.GetAsync("/api/admin/dead-letters/traceability-consignment-tested");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Contains(
+            body.RootElement.EnumerateArray(),
+            message => message.GetProperty("eventId").GetString() == eventId
+                && message.GetProperty("consumerGroup").GetString() == "traceability-consignment-tested");
+    }
+
     private static async Task WaitUntilTopicIsMissingAsync(IAdminClient admin, string topic)
     {
         var deadline = DateTime.UtcNow.AddSeconds(10);

@@ -36,6 +36,10 @@ public class KafkaDeadLetterService(
                 configuration["Kafka:ConsumerGroups:BatchDeterminations"] ?? "traceability-batch-determinations",
                 configuration["Kafka:Topics:BatchDeterminations"] ?? "wonrich.quality-lab.batch-determinations.v1",
                 configuration["Kafka:Topics:BatchDeterminationsDeadLetter"] ?? "wonrich.dlq.traceability-batch-determinations.v1"),
+            new(
+                configuration["Kafka:ConsumerGroups:ConsignmentTested"] ?? "traceability-consignment-tested",
+                configuration["Kafka:Topics:ConsignmentTested"] ?? "wonrich.mcc.consignment-tested.v1",
+                configuration["Kafka:Topics:ConsignmentTestedDeadLetter"] ?? "wonrich.dlq.traceability-consignment-tested.v1"),
         ];
     }
 
