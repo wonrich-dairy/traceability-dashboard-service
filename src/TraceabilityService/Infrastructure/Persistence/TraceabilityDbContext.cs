@@ -16,6 +16,7 @@ public class TraceabilityDbContext(DbContextOptions<TraceabilityDbContext> optio
     public DbSet<ProcessedMessage> ProcessedMessages => Set<ProcessedMessage>();
     public DbSet<DeviationRecord> DeviationRecords => Set<DeviationRecord>();
     public DbSet<LabDetermination> LabDeterminations => Set<LabDetermination>();
+    public DbSet<PendingDispatchEvent> PendingDispatchEvents => Set<PendingDispatchEvent>();
     public DbSet<DailyQualityAggregate> DailyQualityAggregates => Set<DailyQualityAggregate>();
     public DbSet<DailyReasonCodeAggregate> DailyReasonCodeAggregates => Set<DailyReasonCodeAggregate>();
     public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();

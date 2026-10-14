@@ -32,7 +32,7 @@ public class BatchDeterminationHandlerTests(TraceabilityApiFactory factory)
         await using var batch = await SeedBatchAsync(snapshotResolvedAndProcessed: true);
         var cleared = Cleared(batch.BatchId, at: FirstEventAt.AddHours(6));
 
-        Assert.Equal(BatchDeterminationOutcome.Applied, await HandleAsync(cleared));
+        Assert.Equal(EventOutcome.Handled, await HandleAsync(cleared));
 
         var state = await batch.ReadAsync();
         Assert.Equal(BatchStatus.Cleared, state.Batch.Status);
@@ -66,7 +66,7 @@ public class BatchDeterminationHandlerTests(TraceabilityApiFactory factory)
             new OutOfSpecDetail("FatPercent", 3.20m, "Min", 3.50m),
             new OutOfSpecDetail("Ph", 6.40m, "Min", 6.60m));
 
-        Assert.Equal(BatchDeterminationOutcome.Applied, await HandleAsync(failed));
+        Assert.Equal(EventOutcome.Handled, await HandleAsync(failed));
 
         var state = await batch.ReadAsync();
         Assert.Equal(BatchStatus.Failed, state.Batch.Status);
@@ -90,10 +90,10 @@ public class BatchDeterminationHandlerTests(TraceabilityApiFactory factory)
         var failed = Failed(batch.BatchId, at: FirstEventAt.AddHours(6),
             reasons: ["LOW_FAT"], new OutOfSpecDetail("FatPercent", 3.20m, "Min", 3.50m));
 
-        Assert.Equal(BatchDeterminationOutcome.Applied, await HandleAsync(failed));
+        Assert.Equal(EventOutcome.Handled, await HandleAsync(failed));
         var first = await batch.ReadAsync();
 
-        Assert.Equal(BatchDeterminationOutcome.Duplicate, await HandleAsync(failed));
+        Assert.Equal(EventOutcome.Duplicate, await HandleAsync(failed));
         var second = await batch.ReadAsync();
 
         Assert.Equal(first.Counts, second.Counts);
@@ -115,7 +115,7 @@ public class BatchDeterminationHandlerTests(TraceabilityApiFactory factory)
 
         foreach (var determination in supersedeFirst ? new BatchDeterminationEventBase[] { b, a } : [a, b])
         {
-            Assert.Equal(BatchDeterminationOutcome.Applied, await HandleAsync(determination));
+            Assert.Equal(EventOutcome.Handled, await HandleAsync(determination));
         }
 
         var state = await batch.ReadAsync();
@@ -139,7 +139,7 @@ public class BatchDeterminationHandlerTests(TraceabilityApiFactory factory)
     {
         await using var batch = await SeedBatchAsync();
 
-        Assert.Equal(BatchDeterminationOutcome.Applied,
+        Assert.Equal(EventOutcome.Handled,
             await HandleAsync(Failed(batch.BatchId, at: FirstEventAt.AddHours(6), reasons: ["XYZ"])));
 
         var state = await batch.ReadAsync();
@@ -170,17 +170,22 @@ public class BatchDeterminationHandlerTests(TraceabilityApiFactory factory)
 
         // Once SCRUM-130 has created the batch, the retry applies.
         await batch.CreateAsync();
-        Assert.Equal(BatchDeterminationOutcome.Applied, await HandleAsync(cleared));
+        Assert.Equal(EventOutcome.Handled, await HandleAsync(cleared));
         Assert.Equal(BatchStatus.Cleared, (await batch.ReadAsync()).Batch.Status);
     }
 
-    private async Task<BatchDeterminationOutcome> HandleAsync(BatchDeterminationEventBase determination)
+    // One attempt through the lab consumer's processor: dispatch, duplicate check, handler
+    // and commit, against MySQL, without a broker.
+    private async Task<EventOutcome> HandleAsync(BatchDeterminationEventBase determination)
     {
-        using var scope = factory.Services.CreateScope();
-        var handler = scope.ServiceProvider.GetRequiredService<IBatchDeterminationHandler>();
         var payload = JsonSerializer.Serialize(determination, determination.GetType(), Json);
-        return await handler.HandleAsync(new BatchDeterminationMessage(Topic, determination.EventType, payload));
+        return await Processor.HandleOnceAsync(new ConsumedEvent(
+            Topic, Partition: 0, Offset: 0, determination.BatchId, determination.EventType,
+            determination.EventId, CorrelationId: "test", payload));
     }
+
+    private EventProcessor Processor =>
+        factory.Services.GetRequiredKeyedService<EventProcessor>(LabDeterminationConsumer.Name);
 
     private async Task<TestBatch> SeedBatchAsync(bool snapshotResolvedAndProcessed = false, bool create = true)
     {
@@ -300,7 +305,8 @@ public class BatchDeterminationHandlerTests(TraceabilityApiFactory factory)
             using var scope = factory.Services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<TraceabilityDbContext>();
 
-            var consumerGroup = scope.ServiceProvider.GetRequiredService<BatchDeterminationConsumerOptions>().ConsumerGroup;
+            var consumerGroup = scope.ServiceProvider
+                .GetRequiredKeyedService<EventProcessor>(LabDeterminationConsumer.Name).Options.ConsumerGroup;
 
             var labEvents = await db.TimelineEvents.AsNoTracking()
                 .Where(e => e.BatchId == BatchId && e.Checkpoint == Checkpoint.Lab)

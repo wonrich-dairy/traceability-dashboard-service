@@ -9,7 +9,6 @@ using TraceabilityService.Api.Infrastructure;
 using TraceabilityService.Api.Infrastructure.Persistence;
 using TraceabilityService.Application;
 using TraceabilityService.Health;
-using TraceabilityService.Infrastructure.Kafka;
 using TraceabilityService.Observability;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -37,13 +36,11 @@ builder.Services.AddDbContext<TraceabilityDbContext>(options =>
 builder.Services.AddScoped<IBatchRecordService, BatchRecordService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
 
-// ── Lab determinations from Quality Lab (SCRUM-131) ──────────────────────────
-// One transaction per event; the consumer retries, then dead-letters, and commits after either.
-builder.Services.AddSingleton(BatchDeterminationConsumerOptions.From(builder.Configuration));
-builder.Services.AddScoped<IBatchDeterminationHandler, BatchDeterminationHandler>();
-builder.Services.AddSingleton<IDeadLetterPublisher, KafkaDeadLetterPublisher>();
-builder.Services.AddSingleton<BatchDeterminationProcessor>();
-builder.Services.AddHostedService<BatchDeterminationConsumer>();
+// ── Kafka consumers ──────────────────────────────────────────────────────────
+// Each one: a transaction per event with a duplicate check, retries, then dead-letters, and
+// commits after either (EventProcessor). Handlers are per event type.
+builder.Services.AddLabDeterminationConsumer(builder.Configuration);
+builder.Services.AddProcessingConsumers(builder.Configuration);
 
 // "Today" for the dashboard is the date in Asia/Colombo.
 builder.Services.TryAddSingleton(TimeProvider.System);

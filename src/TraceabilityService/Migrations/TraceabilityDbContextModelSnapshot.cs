@@ -349,6 +349,49 @@ namespace TraceabilityService.Migrations
                     b.ToTable("lab_determinations", (string)null);
                 });
 
+            modelBuilder.Entity("TraceabilityService.Domain.Entities.PendingDispatchEvent", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("DispatchNumber")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("json");
+
+                    b.Property<DateTime>("ReceivedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("SourceEventId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Topic")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DispatchNumber");
+
+                    b.HasIndex("SourceEventId")
+                        .IsUnique();
+
+                    b.ToTable("pending_dispatch_events", (string)null);
+                });
+
             modelBuilder.Entity("TraceabilityService.Domain.Entities.ProcessedMessage", b =>
                 {
                     b.Property<long>("Id")
