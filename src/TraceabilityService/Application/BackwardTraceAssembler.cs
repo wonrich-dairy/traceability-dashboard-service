@@ -107,7 +107,7 @@ public static class BackwardTraceAssembler
             HasDeviation = origin is not null,
             OriginCheckpoint = origin?.Checkpoint,
             Origin = origin?.Deviations[0],
-            Chain = chain,
+            Chain = [.. chain.AsEnumerable().Reverse()],
             Holds = Holds(eventList),
 
             Links = payload is null ? null : BatchRecordAssembler.LinksOf(payload),

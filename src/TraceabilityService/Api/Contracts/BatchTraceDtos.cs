@@ -32,7 +32,7 @@ public class BatchTraceResponse : BatchSummaryDto
     public TraceDeviation? Origin{get; set;}
 
     /// <summary>
-    /// Always four, in stage order: Mcc, Intake, Processing, Lab. A checkpoint with no data
+    /// Always four, in backward-trace order: Lab, Processing, Intake, Mcc. A checkpoint with no data
     /// is MissingData or NotYetReached, never left out.
     /// </summary>
     public List<TraceCheckpoint> Chain{get; set;} = [];
