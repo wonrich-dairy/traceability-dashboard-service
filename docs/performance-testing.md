@@ -38,6 +38,8 @@ The batch record endpoints (`/api/batches/…`, SCRUM-133) and the dashboard (`/
 
 The batches all fall in August 2026, so the dashboard samplers ask for `?facility=FACTORY-PERF&from=2026-08-01&to=2026-08-31`. Over that range the societies panel reads all 980 resolved snapshots, the heaviest query the dashboard has.
 
+The batch search samplers (SCRUM-139, DoD: p95 under 2 s against at least 1,000 batches) use the same 1,000 batches. `read: batch search` pages through them at random (`page=1…20`). `read: batch search by society` and `read: batch search by tank and user` filter through the snapshot JSON (societies `VS010`–`VS050`, tank `T2`, user `processing.tech`). `read: batch export` writes all of them as CSV, the heaviest of the four. `BatchSearchEndpointTests.Search_and_export_answer_within_two_seconds_over_a_thousand_batches` also checks these queries against 1,000 batches on every CI run, without load, and writes each one's time to the test output.
+
 Load it into the **staging** database before the run, and remove it afterwards:
 
 ```bash

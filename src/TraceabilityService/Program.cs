@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Prometheus;
+using TraceabilityService.Api.Controllers;
 using TraceabilityService.Api.Infrastructure;
 using TraceabilityService.Api.Infrastructure.Persistence;
 using TraceabilityService.Application;
@@ -37,6 +38,7 @@ builder.Services.AddDbContext<TraceabilityDbContext>(options =>
 builder.Services.AddScoped<IBatchRecordService, BatchRecordService>();
 builder.Services.AddScoped<IBatchTraceService, BatchTraceService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
+builder.Services.AddScoped<IBatchSearchService, BatchSearchService>();
 
 // ── Kafka consumers ──────────────────────────────────────────────────────────
 // Each one: a transaction per event with a duplicate check, retries, then dead-letters, and
@@ -60,8 +62,10 @@ builder.Services.AddTraceabilityAuthorization();
 // ── CORS: the frontend's origins come from configuration (Cors__AllowedOrigins__0, ...) ──
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
                      ?? ["http://localhost:5173", "http://127.0.0.1:5173"];
+// The export's file name and row count are in headers, which a browser hides cross-origin unless exposed.
 builder.Services.AddCors(options => options.AddPolicy("TraceabilityCors", policy =>
-    policy.WithOrigins(allowedOrigins).AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
+    policy.WithOrigins(allowedOrigins).AllowAnyHeader().AllowAnyMethod().AllowCredentials()
+        .WithExposedHeaders("Content-Disposition", BatchSearchController.BatchCountHeader)));
 
 // ── Health ───────────────────────────────────────────────────────────────────
 // mysql failing = Unhealthy (deploy fails); Kafka failing = Degraded (deploy still passes).
