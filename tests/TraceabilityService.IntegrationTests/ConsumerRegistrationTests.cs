@@ -20,7 +20,7 @@ public class ConsumerRegistrationTests(TraceabilityApiFactory factory)
     [InlineData(LabDeterminationConsumer.Name,
         "wonrich.quality-lab.batch-determinations.v1", "traceability-batch-determinations", "wonrich.dlq.traceability-batch-determinations.v1")]
     [InlineData(ConsignmentTestedConsumer.Name,
-        "wonrich.mcc.consignment-tested.v1", "traceability-consignment-tested", "wonrich.dlq.traceability-consignment-tested.v1")]
+        "wonrich.intake.consignment-tested.v1", "traceability-consignment-tested", "wonrich.dlq.traceability-consignment-tested.v1")]
     public void Each_consumer_uses_its_registered_topic_group_and_dead_letter_topic(
         string consumer, string topic, string group, string deadLetterTopic)
     {

@@ -17,7 +17,7 @@ public static class ConsignmentTestedConsumer
         services.TryAddSingleton(TimeProvider.System);
         return services.AddEventConsumer(
             KafkaConsumerOptions.From(configuration, Name,
-                topic: "wonrich.mcc.consignment-tested.v1",
+                topic: "wonrich.intake.consignment-tested.v1",
                 consumerGroup: "traceability-consignment-tested",
                 deadLetterTopic: "wonrich.dlq.traceability-consignment-tested.v1"),
             handlers => handlers.Add<ConsignmentTestedHandler>("ConsignmentTested"));

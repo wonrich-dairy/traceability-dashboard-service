@@ -128,7 +128,7 @@ Kafka is then reached at `localhost:29092`, the default in `appsettings.json`.
 | `Kafka:Topics:BatchDeterminations` | `Kafka__Topics__BatchDeterminations` | | Quality Lab's determinations, default `wonrich.quality-lab.batch-determinations.v1` |
 | `Kafka:Topics:BatchDeterminationsDeadLetter` | `Kafka__Topics__BatchDeterminationsDeadLetter` | | Where determinations that cannot be applied are parked, default `wonrich.dlq.traceability-batch-determinations.v1` |
 | `Kafka:ConsumerGroups:BatchDeterminations` | `Kafka__ConsumerGroups__BatchDeterminations` | | Consumer group for the determinations, default `traceability-batch-determinations` |
-| `Kafka:Topics:ConsignmentTested` | `Kafka__Topics__ConsignmentTested` | | MCC gate test verdicts, default `wonrich.mcc.consignment-tested.v1` |
+| `Kafka:Topics:ConsignmentTested` | `Kafka__Topics__ConsignmentTested` | | MCC gate test verdicts, default `wonrich.intake.consignment-tested.v1` |
 | `Kafka:Topics:ConsignmentTestedDeadLetter` | `Kafka__Topics__ConsignmentTestedDeadLetter` | | Where unprocessable gate tests are parked, default `wonrich.dlq.traceability-consignment-tested.v1` |
 | `Kafka:ConsumerGroups:ConsignmentTested` | `Kafka__ConsumerGroups__ConsignmentTested` | | Consumer group for gate test events, default `traceability-consignment-tested` |
 | `Kafka:Consumers:Enabled` | `Kafka__Consumers__Enabled` | | `false` stops all consumers from starting (the integration tests set it). Default `true` |

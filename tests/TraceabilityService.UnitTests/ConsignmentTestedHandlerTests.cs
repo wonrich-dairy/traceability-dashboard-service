@@ -56,7 +56,7 @@ public class ConsignmentTestedHandlerTests
     {
         var json = JsonSerializer.Serialize(value, new JsonSerializerOptions(JsonSerializerDefaults.Web));
         await handler.HandleAsync(new ConsumedEvent(
-            "wonrich.mcc.consignment-tested.v1", 0, offset, "VS014", "ConsignmentTested",
+            "wonrich.intake.consignment-tested.v1", 0, offset, "VS014", "ConsignmentTested",
             Guid.NewGuid(), "test-correlation", json), CancellationToken.None);
     }
 }
