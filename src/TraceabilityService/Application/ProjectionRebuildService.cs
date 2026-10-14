@@ -79,7 +79,11 @@ public class ProjectionRebuildService(
         var rebuildGroup = string.IsNullOrWhiteSpace(sanitizedRequestedGroup) ? $"traceability-rebuild-{Guid.NewGuid():N}" : sanitizedRequestedGroup;
         var topics = GetTopics();
 
-        logger.LogInformation("Starting projection rebuild using consumer group {RebuildGroup}", rebuildGroup);
+        var rebuildGroupForLog = rebuildGroup
+            .Replace("\r", string.Empty)
+            .Replace("\n", string.Empty);
+
+        logger.LogInformation("Starting projection rebuild using consumer group {RebuildGroup}", rebuildGroupForLog);
 
         // Capture an end offset for every partition before reading. Events appended
         // after each captured boundary remain for the live groups after restart.
