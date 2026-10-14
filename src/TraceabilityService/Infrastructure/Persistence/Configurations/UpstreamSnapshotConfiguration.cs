@@ -39,6 +39,19 @@ public class UpstreamSnapshotConfiguration : IEntityTypeConfiguration<UpstreamSn
         builder.Property(s => s.FailureReason)
             .HasMaxLength(500);
 
+        builder.Property(s => s.NextAttemptAt)
+            .HasColumnType("datetime(6)");
+
+        // A concurrency token: claiming a row for an attempt sets it, so of two workers claiming
+        // the same row at once, the second one's UPDATE matches nothing and it backs off.
+        builder.Property(s => s.LastCorrelationId)
+            .HasMaxLength(64)
+            .IsConcurrencyToken();
+
+        // The retry worker's due-row query: PendingRetry rows whose NextAttemptAt has passed,
+        // oldest first.
+        builder.HasIndex(s => new { s.ResolutionStatus, s.NextAttemptAt });
+
         builder.HasOne<BatchRecord>()
             .WithOne(b => b.UpstreamSnapshot)
             .HasForeignKey<UpstreamSnapshot>(s => s.BatchId)

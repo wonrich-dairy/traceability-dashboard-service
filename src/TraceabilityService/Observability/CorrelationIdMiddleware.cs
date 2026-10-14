@@ -34,6 +34,9 @@ public sealed partial class CorrelationIdMiddleware(RequestDelegate next, ILogge
         }
     }
 
+    /// <summary>Whether a correlation ID is safe to log and forward as it is; anything else is replaced.</summary>
+    public static bool IsSafeId(string? value) => value is not null && SafeId().IsMatch(value);
+
     [GeneratedRegex("^[A-Za-z0-9_-]{1,64}$")]
     private static partial Regex SafeId();
 }

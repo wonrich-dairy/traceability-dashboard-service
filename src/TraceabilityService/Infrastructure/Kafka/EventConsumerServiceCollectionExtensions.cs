@@ -21,6 +21,7 @@ public static class EventConsumerServiceCollectionExtensions
         }
 
         services.TryAddScoped<IEventUnitOfWork, EfEventUnitOfWork>();
+        services.TryAddScoped<AfterCommit>();
         services.TryAddSingleton<IDeadLetterPublisher, KafkaDeadLetterPublisher>();
 
         services.AddKeyedSingleton(options.Name, (provider, _) => new EventProcessor(

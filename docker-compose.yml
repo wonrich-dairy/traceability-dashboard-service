@@ -22,10 +22,15 @@ services:
       Kafka__SaslMechanism: "${KAFKA_SASL_MECHANISM:-}"
       Kafka__SaslUsername: "${KAFKA_SASL_USERNAME:-}"
       Kafka__SaslPassword: "${KAFKA_SASL_PASSWORD:-}"
-      # MCC and Intake Service, for resolving consignment data (SCRUM-12, SCRUM-132)
-      MccIntake__BaseUrl: "${MCC_INTAKE_BASE_URL:-}"
-      MccIntake__ClientId: "${MCC_INTAKE_CLIENT_ID:-}"
-      MccIntake__ClientSecret: "${MCC_INTAKE_CLIENT_SECRET:-}"
+      # MCC and Intake Service, for resolving consignment data (SCRUM-12, SCRUM-132). The client ID and
+      # secret are a service account's sign-in at the Auth Service. Resolution stays off until all are set.
+      Services__Auth__BaseUrl: "${AUTH_BASE_URL:-}"
+      Services__MccIntake__BaseUrl: "${MCC_INTAKE_BASE_URL:-}"
+      Services__MccIntake__TimeoutSeconds: "${MCC_INTAKE_TIMEOUT_SECONDS:-10}"
+      Services__MccIntake__ClientId: "${MCC_INTAKE_CLIENT_ID:-}"
+      Services__MccIntake__ClientSecret: "${MCC_INTAKE_CLIENT_SECRET:-}"
+      Upstream__MaxAttempts: "${UPSTREAM_MAX_ATTEMPTS:-10}"
+      Upstream__PollIntervalSeconds: "${UPSTREAM_POLL_INTERVAL_SECONDS:-30}"
       Cors__AllowedOrigins__0: "${CORS_ORIGIN:-http://localhost:5173}"
     networks: [wonrich-net]
 

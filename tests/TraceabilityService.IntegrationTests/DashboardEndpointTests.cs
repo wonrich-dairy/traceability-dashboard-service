@@ -29,7 +29,7 @@ public class DashboardEndpointTests(TraceabilityApiFactory factory) : IAsyncLife
     private static readonly DateTime ProcessedAt = new(2026, 10, 11, 5, 0, 0, DateTimeKind.Utc);
 
     public static TheoryData<string> Endpoints =>
-        ["summary", "trend", "failure-reasons", "recent-failures", "societies"];
+        ["summary", "deviations", "trend", "failure-reasons", "recent-failures", "societies", "marginal-societies"];
 
     private WebApplicationFactory<Program>? _app;
 
@@ -49,7 +49,7 @@ public class DashboardEndpointTests(TraceabilityApiFactory factory) : IAsyncLife
             //                      date         line  batches pend clear fail hold  mcc intake proc lab
             Aggregate(Facility, Today,              "FM", 3,      1,   1,    1,   0,    1,  0,     0,   1),
             Aggregate(Facility, Yesterday,          "FM", 4,      0,   3,    1,   0,    0,  1,     0,   2),
-            // Nothing decided: its fail rate must be null, not 0.
+            // Nothing decided: none of its batches has failed, so its fail rate is 0.
             Aggregate(Facility, Yesterday,          "SY", 2,      1,   0,    0,   1,    0,  0,     1,   0),
             // Outside the default range.
             Aggregate(Facility, new(2026, 9, 1),    "FM", 5,      0,   5,    0,   0,    0,  0,     0,   0),
@@ -151,6 +151,29 @@ public class DashboardEndpointTests(TraceabilityApiFactory factory) : IAsyncLife
     }
 
     [Fact]
+    public async Task Deviations_give_the_summarys_counts_per_checkpoint_on_their_own()
+    {
+        var json = await GetOkAsync($"/api/dashboard/deviations?facility={Facility}");
+
+        Assert.Equal(
+            [("Mcc", 1), ("Intake", 1), ("Processing", 1), ("Lab", 3)],
+            json.GetProperty("checkpoints").EnumerateArray()
+                .Select(d => (d.GetProperty("checkpoint").GetString(), d.GetProperty("count").GetInt32())));
+        Assert.Equal("2026-09-12", json.GetProperty("from").GetString());
+        Assert.Equal("2026-10-11T05:00:00Z", json.GetProperty("dataAsOf").GetString());
+    }
+
+    [Fact]
+    public async Task Marginal_societies_answer_the_same_as_societies()
+    {
+        var societies = await GetOkAsync($"/api/dashboard/societies?facility={Facility}&limit=2");
+        var marginal = await GetOkAsync($"/api/dashboard/marginal-societies?facility={Facility}&limit=2");
+
+        Assert.Equal(societies.GetRawText(), marginal.GetRawText());
+        Assert.Equal(2, marginal.GetProperty("societies").GetArrayLength());
+    }
+
+    [Fact]
     public async Task Summary_filters_by_product_line()
     {
         var json = await GetOkAsync($"/api/dashboard/summary?facility={Facility}&productLine=fm");
@@ -160,7 +183,7 @@ public class DashboardEndpointTests(TraceabilityApiFactory factory) : IAsyncLife
     }
 
     [Fact]
-    public async Task Trend_gives_each_day_and_product_line_with_a_null_fail_rate_when_nothing_was_decided()
+    public async Task Trend_gives_each_day_and_product_line_with_the_fail_rate_over_every_batch()
     {
         var json = await GetOkAsync($"/api/dashboard/trend?facility={Facility}");
 
@@ -173,7 +196,8 @@ public class DashboardEndpointTests(TraceabilityApiFactory factory) : IAsyncLife
             .ToList();
 
         Assert.Equal(
-            [("2026-10-10", "FM", 1, 0.25), ("2026-10-10", "SY", 0, null), ("2026-10-11", "FM", 1, 0.5)],
+            // FM on the 11th: 1 failed of 3 batches, though only 2 are decided.
+            [("2026-10-10", "FM", 1, 0.25), ("2026-10-10", "SY", 0, 0.0), ("2026-10-11", "FM", 1, 1.0 / 3)],
             points);
     }
 
@@ -240,6 +264,7 @@ public class DashboardEndpointTests(TraceabilityApiFactory factory) : IAsyncLife
 
     // Each filter on each endpoint, against the seeded rows. Expected values are reduced to
     // a short string per endpoint: summary "pending,cleared,failed,onHold" for the range,
+    // deviations "mcc,intake,processing,lab",
     // trend "date line failRate", failure-reasons "code:count", recent failures and
     // societies their IDs, in order.
     [Theory]
@@ -249,18 +274,21 @@ public class DashboardEndpointTests(TraceabilityApiFactory factory) : IAsyncLife
     [InlineData("failure-reasons", "facility=" + OtherFacility, "SensoryAbnormal:9")]
     [InlineData("recent-failures", "facility=" + OtherFacility, "TEST-DASH-8")]
     [InlineData("societies", "facility=" + OtherFacility, "VS005")]
+    [InlineData("deviations", "facility=" + OtherFacility, "0,0,0,9")]
     // productLine: SY only
     [InlineData("summary", "facility=" + Facility + "&productLine=SY", "1,0,0,1")]
-    [InlineData("trend", "facility=" + Facility + "&productLine=SY", "2026-10-10 SY null")]
+    [InlineData("trend", "facility=" + Facility + "&productLine=SY", "2026-10-10 SY 0")]
     [InlineData("failure-reasons", "facility=" + Facility + "&productLine=SY", "TemperatureLow:1")]
     [InlineData("recent-failures", "facility=" + Facility + "&productLine=SY", "TEST-DASH-3")]
     [InlineData("societies", "facility=" + Facility + "&productLine=SY", "")]   // its only SY batch is unresolved
+    [InlineData("deviations", "facility=" + Facility + "&productLine=SY", "0,0,1,0")]
     // from/to: yesterday only
     [InlineData("summary", "facility=" + Facility + "&from=2026-10-10&to=2026-10-10", "1,3,1,1")]
-    [InlineData("trend", "facility=" + Facility + "&from=2026-10-10&to=2026-10-10", "2026-10-10 FM 0.25|2026-10-10 SY null")]
+    [InlineData("trend", "facility=" + Facility + "&from=2026-10-10&to=2026-10-10", "2026-10-10 FM 0.25|2026-10-10 SY 0")]
     [InlineData("failure-reasons", "facility=" + Facility + "&from=2026-10-10&to=2026-10-10", "PhLow:2|TemperatureHigh:1|TemperatureLow:1")]
     [InlineData("recent-failures", "facility=" + Facility + "&from=2026-10-10&to=2026-10-10", "TEST-DASH-2")]
     [InlineData("societies", "facility=" + Facility + "&from=2026-10-10&to=2026-10-10", "VS001|VS003")]   // DASH-2 only
+    [InlineData("deviations", "facility=" + Facility + "&from=2026-10-10&to=2026-10-10", "0,1,1,2")]
     public async Task Each_filter_narrows_each_endpoint(string endpoint, string query, string expected)
     {
         var json = await GetOkAsync($"/api/dashboard/{endpoint}?{query}");
@@ -268,6 +296,7 @@ public class DashboardEndpointTests(TraceabilityApiFactory factory) : IAsyncLife
         var actual = endpoint switch
         {
             "summary" => string.Join(",", Counts(json.GetProperty("range"))),
+            "deviations" => string.Join(",", json.GetProperty("checkpoints").EnumerateArray().Select(d => d.GetProperty("count").GetInt32())),
             "trend" => string.Join("|", json.GetProperty("points").EnumerateArray().Select(p =>
                 $"{p.GetProperty("date").GetString()} {p.GetProperty("productLine").GetString()} " +
                 (p.GetProperty("failRate").ValueKind == JsonValueKind.Null ? "null" : p.GetProperty("failRate").GetDouble().ToString(System.Globalization.CultureInfo.InvariantCulture)))),
@@ -298,7 +327,12 @@ public class DashboardEndpointTests(TraceabilityApiFactory factory) : IAsyncLife
             case "failure-reasons":
                 Assert.Empty(json.GetProperty("reasons").EnumerateArray());
                 break;
+            case "deviations":
+                Assert.Equal(4, json.GetProperty("checkpoints").GetArrayLength());
+                Assert.All(json.GetProperty("checkpoints").EnumerateArray(), d => Assert.Equal(0, d.GetProperty("count").GetInt32()));
+                break;
             case "societies":
+            case "marginal-societies":
                 Assert.Empty(json.GetProperty("societies").EnumerateArray());
                 break;
             default:
@@ -314,6 +348,8 @@ public class DashboardEndpointTests(TraceabilityApiFactory factory) : IAsyncLife
     [InlineData("recent-failures?limit=0", "limit")]
     [InlineData("recent-failures?limit=51", "limit")]
     [InlineData("societies?limit=0", "limit")]
+    [InlineData("marginal-societies?limit=51", "limit")]
+    [InlineData("deviations?productLine=XX", "productLine")]
     public async Task Invalid_parameters_are_a_400_problem_naming_the_parameter(string pathAndQuery, string parameter)
     {
         var response = await Client(WonrichRoles.QualityControlOfficer).GetAsync($"/api/dashboard/{pathAndQuery}");

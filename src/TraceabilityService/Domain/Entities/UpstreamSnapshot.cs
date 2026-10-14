@@ -39,4 +39,13 @@ public class UpstreamSnapshot
     // Why the last attempt did not resolve, e.g. that upstream has no such dispatch
     // or returned an error. Kept for PendingRetry and Unavailable.
     public string? FailureReason{get; set;}
+
+    // When the retry worker may next try a PendingRetry row. Null for a row created before
+    // retries were tracked (due at once), and for Resolved and Unavailable. Pushed forward
+    // while an attempt is running, so no other worker picks the row up meanwhile.
+    public DateTime? NextAttemptAt{get; set;}
+
+    // The X-Correlation-ID sent on the last attempt, for finding its log lines. Also marks
+    // which worker owns the attempt in progress.
+    public string? LastCorrelationId{get; set;}
 }

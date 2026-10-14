@@ -42,6 +42,11 @@ builder.Services.AddScoped<IDashboardService, DashboardService>();
 builder.Services.AddLabDeterminationConsumer(builder.Configuration);
 builder.Services.AddProcessingConsumers(builder.Configuration);
 
+// ── Upstream snapshots (MCC and Intake Service) ──────────────────────────────
+// A new batch's snapshot is tried as soon as its event commits, then retried in the background
+// with backoff (Services:MccIntake, Services:Auth, Upstream). Idle until those are configured.
+builder.Services.AddUpstreamResolution(builder.Configuration);
+
 // "Today" for the dashboard is the date in Asia/Colombo.
 builder.Services.TryAddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<FactoryCalendar>();

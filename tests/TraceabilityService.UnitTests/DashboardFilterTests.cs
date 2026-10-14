@@ -119,19 +119,19 @@ public class DashboardFilterTests
 public class FailRateTests
 {
     [Theory]
-    [InlineData(3, 1, 0.25)]
-    [InlineData(0, 2, 1.0)]     // everything decided failed
-    [InlineData(5, 0, 0.0)]     // decided, none failed: a real 0
-    [InlineData(1, 2, 2.0 / 3)]
-    public void Fail_rate_is_failed_over_cleared_plus_failed(int cleared, int failed, double expected)
+    [InlineData(4, 1, 0.25)]    // one failed of four, whatever the other three are
+    [InlineData(2, 2, 1.0)]     // every batch failed
+    [InlineData(2, 0, 0.0)]     // none failed yet, pending included: a real 0
+    [InlineData(3, 2, 2.0 / 3)]
+    public void Fail_rate_is_failed_over_every_batch(int batches, int failed, double expected)
     {
-        Assert.Equal(expected, FailRate.Of(cleared, failed)!.Value, precision: 10);
+        Assert.Equal(expected, FailRate.Of(batches, failed)!.Value, precision: 10);
     }
 
     [Fact]
-    public void Nothing_decided_has_no_fail_rate_rather_than_zero()
+    public void No_batches_has_no_fail_rate_rather_than_zero()
     {
-        Assert.Null(FailRate.Of(cleared: 0, failed: 0));
+        Assert.Null(FailRate.Of(batches: 0, failed: 0));
     }
 }
 

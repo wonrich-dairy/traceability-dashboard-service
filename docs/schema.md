@@ -176,11 +176,14 @@ One row per batch, created as soon as the batch is known, before the lookup to t
 | `LastAttemptAt` | `datetime(6)` | Yes | Null until the first attempt |
 | `ResolvedAt` | `datetime(6)` | Yes | Null until resolved |
 | `FailureReason` | `varchar(500)` | Yes | Why the last attempt did not resolve, e.g. that upstream has no such dispatch, or returned an error. This is where "not found" and "failed" are told apart |
+| `NextAttemptAt` | `datetime(6)` | Yes | When the retry worker may next try a `PendingRetry` row; pushed forward while an attempt runs, so no other worker takes it. Null for `Resolved` and `Unavailable`, and for rows from before retries were tracked, which are due at once |
+| `LastCorrelationId` | `varchar(64)` | Yes | The `X-Correlation-ID` the last attempt sent upstream, for finding its log lines |
 
 | Index | Columns | Unique | Serves |
 |---|---|---|---|
 | `IX_upstream_snapshots_BatchId` | `BatchId` | Yes | One snapshot per batch; backward trace |
-| `IX_upstream_snapshots_ResolutionStatus` | `ResolutionStatus` | | The resolver picking up `PendingRetry` rows |
+| `IX_upstream_snapshots_ResolutionStatus` | `ResolutionStatus` | | Counting snapshots by status. Superseded for the resolver by the index below; kept because migrations are add-only |
+| `IX_upstream_snapshots_ResolutionStatus_NextAttemptAt` | `ResolutionStatus`, `NextAttemptAt` | | The retry worker's due rows: `PendingRetry` with `NextAttemptAt` passed, oldest first |
 
 A forward trace ("which batches did society VS014's milk reach?") has to look inside `Payload`, so it reads every resolved snapshot rather than using an index:
 
@@ -278,7 +281,7 @@ ORDER BY d.DeterminedAt;
 | `LabDeviationCount` | `int` | | Deviations reported by the lab. The four checkpoint counts add up to `DeviationCount`. They are stored rather than counted per request because `deviation_records` has no facility column, so a per-facility count would join it to `batch_records` every time |
 | `UpdatedAt` | `datetime(6)` | | Last time the row was recalculated |
 
-The pass rate is `ClearedCount / (ClearedCount + FailedCount)` and is not stored. Pending and on-hold batches are in `BatchCount` but neither outcome, so dividing by `BatchCount` instead gives a wrong, lower rate. With no decided batches the rate does not exist; show it as empty, not 0%.
+The dashboard's fail rate is `FailedCount / BatchCount` and is not stored. Pending and on-hold batches are in `BatchCount`, so the rate is the share of all the day's batches that have failed: a day the lab is still deciding reads low and rises as its batches fail, and it never disagrees with the "failed of batches" count shown beside it. With no batches the rate does not exist; show it as empty, not 0%.
 
 | Index | Columns | Unique | Serves |
 |---|---|---|---|
@@ -374,9 +377,11 @@ The SCRUM-131 consumer moves a batch to `Failed` on `BatchFailed`, as its Defini
 
 | Value | Meaning |
 |---|---|
-| `PendingRetry` | Not looked up yet, or the last lookup failed and will be retried. `FailureReason` holds the last error, if any |
+| `PendingRetry` | Not looked up yet, or the last lookup failed and will be retried at `NextAttemptAt`. `FailureReason` holds the last error, if any |
 | `Resolved` | Looked up; `Payload` holds the tree |
-| `Unavailable` | Given up on. `FailureReason` says why: upstream has no such dispatch, or the retries ran out |
+| `Unavailable` | Given up on. `FailureReason` says why: upstream has no such dispatch, or the retries ran out (`Upstream:MaxAttempts`) |
+
+The rules that move a snapshot between these are in the README, under Upstream snapshots.
 
 ### Product lines
 
@@ -537,6 +542,7 @@ Nothing else cascades. Deleting a batch leaves its `audit_entries` (they are mea
 | `20261011021748_AddBatchRecordBatchReference` | Adds the nullable `batch_records.BatchReference` and its index. Down removes both |
 | `20261011182048_AddDailyAggregateCheckpointDeviationCounts` | Adds `MccDeviationCount`, `IntakeDeviationCount`, `ProcessingDeviationCount` and `LabDeviationCount` to `daily_quality_aggregates`, each defaulting to 0, and the index `IX_batch_records_Facility_FirstEventAt` for the societies panel. Existing rows are not backfilled: recalculate them, or reload the sample data. Down removes the four columns and the index |
 | `20261012142627_AddLabDeterminations` | Creates `lab_determinations` and its four indexes. Adds nothing to existing tables. Down drops the table |
+| `20261013041812_AddUpstreamSnapshotRetryTracking` | Adds the nullable `NextAttemptAt` and `LastCorrelationId` to `upstream_snapshots`, and the index `IX_upstream_snapshots_ResolutionStatus_NextAttemptAt` for the retry worker (SCRUM-132). Existing `PendingRetry` rows keep a null `NextAttemptAt`, which counts as due. Down removes both columns and the index |
 
 `ReplaceBatchTraceWithReadModel` drops tables, which the rules in [database.md](database.md) do not normally allow. It is safe here only because the original tables never reached staging or production, so no deployed version depends on them. Any data in them is lost on upgrade; for a development database, reload it from the sample data. Later migrations must follow the add-only rule.
 

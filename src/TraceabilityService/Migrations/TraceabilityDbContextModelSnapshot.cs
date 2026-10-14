@@ -506,6 +506,14 @@ namespace TraceabilityService.Migrations
                     b.Property<DateTime?>("LastAttemptAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<string>("LastCorrelationId")
+                        .IsConcurrencyToken()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<DateTime?>("NextAttemptAt")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<string>("Payload")
                         .HasColumnType("json");
 
@@ -523,6 +531,8 @@ namespace TraceabilityService.Migrations
                         .IsUnique();
 
                     b.HasIndex("ResolutionStatus");
+
+                    b.HasIndex("ResolutionStatus", "NextAttemptAt");
 
                     b.ToTable("upstream_snapshots", (string)null);
                 });

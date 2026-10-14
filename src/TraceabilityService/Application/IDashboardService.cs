@@ -6,6 +6,9 @@ public interface IDashboardService
 {
     Task<DashboardSummaryDto> GetSummaryAsync(DashboardFilter filter, CancellationToken cancellationToken = default);
 
+    // Deviations per checkpoint over the range: the same figures as the summary's.
+    Task<DashboardDeviationsDto> GetDeviationsAsync(DashboardFilter filter, CancellationToken cancellationToken = default);
+
     Task<DashboardTrendDto> GetTrendAsync(DashboardFilter filter, CancellationToken cancellationToken = default);
 
     Task<DashboardFailureReasonsDto> GetFailureReasonsAsync(DashboardFilter filter, CancellationToken cancellationToken = default);
