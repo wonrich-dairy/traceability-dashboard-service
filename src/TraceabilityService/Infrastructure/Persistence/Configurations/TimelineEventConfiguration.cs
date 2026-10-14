@@ -48,6 +48,9 @@ public class TimelineEventConfiguration : IEntityTypeConfiguration<TimelineEvent
         // that, because OccurredAt is not its leading column.
         builder.HasIndex(e => e.OccurredAt);
 
+        // Everything one user recorded, for the audit trail's user filter (SCRUM-138).
+        builder.HasIndex(e => new { e.RecordedBy, e.OccurredAt });
+
         builder.HasOne<BatchRecord>()
             .WithMany(b => b.TimelineEvents)
             .HasForeignKey(e => e.BatchId)

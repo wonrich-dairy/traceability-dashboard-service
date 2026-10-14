@@ -27,6 +27,31 @@ public class TraceabilityDbContext(DbContextOptions<TraceabilityDbContext> optio
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(TraceabilityDbContext).Assembly);
     }
 
+    // audit_entries is append-only (SCRUM-138): an entry is added and never changed or removed.
+    // Refused here for anything going through the change tracker; the table's triggers refuse
+    // the rest (ExecuteUpdate, ExecuteDelete, raw SQL), so neither layer relies on the other.
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        RefuseAuditEntryChanges();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        RefuseAuditEntryChanges();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    private void RefuseAuditEntryChanges()
+    {
+        var changed = ChangeTracker.Entries<AuditEntry>()
+            .FirstOrDefault(e => e.State is EntityState.Modified or EntityState.Deleted);
+        if (changed is not null)
+        {
+            throw new AuditEntryImmutableException(changed.Entity.Id, changed.State);
+        }
+    }
+
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
         // Every timestamp is stored as UTC, but MySQL's datetime has no time zone, so EF

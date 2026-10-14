@@ -15,12 +15,9 @@ public interface IBatchSearchService
     // exported what. The entry is saved before the file is returned, so no export goes unaudited.
     Task<BatchExport> ExportAsync(
         BatchSearchFilter filter,
-        BatchExportRequester requester,
+        AuditRequester requester,
         CancellationToken cancellationToken = default);
 }
 
 /// <summary>The CSV file of an export, and how many batches are in it.</summary>
 public sealed record BatchExport(string FileName, byte[] Content, int RowCount);
-
-/// <summary>Who asked for an export, for its audit entry.</summary>
-public sealed record BatchExportRequester(string UserId, string? Role, string? CorrelationId);

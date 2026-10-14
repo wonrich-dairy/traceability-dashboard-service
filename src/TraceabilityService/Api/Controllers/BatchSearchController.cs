@@ -3,8 +3,6 @@ using Microsoft.AspNetCore.Mvc;
 using TraceabilityService.Api.Contracts;
 using TraceabilityService.Api.Infrastructure;
 using TraceabilityService.Application;
-using TraceabilityService.Observability;
-using Wonrich.Auth.Tokens;
 
 namespace TraceabilityService.Api.Controllers;
 
@@ -91,13 +89,7 @@ public class BatchSearchController(IBatchSearchService search) : ControllerBase
             return ValidationProblem(ModelState);
         }
 
-        // The policy has authenticated the caller, so the token names them.
-        var requester = new BatchExportRequester(
-            User.UserId() ?? User.UserName() ?? "unknown",
-            User.Role(),
-            HttpContext.Items[CorrelationIdMiddleware.HeaderName] as string);
-
-        var export = await _search.ExportAsync(filter, requester, cancellationToken);
+        var export = await _search.ExportAsync(filter, this.AuditRequester(), cancellationToken);
 
         Response.Headers[BatchCountHeader] = export.RowCount.ToString(System.Globalization.CultureInfo.InvariantCulture);
         return File(export.Content, $"{BatchSearchCsv.ContentType}; charset=utf-8", export.FileName);

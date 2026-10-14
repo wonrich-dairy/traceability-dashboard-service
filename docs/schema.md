@@ -161,6 +161,7 @@ The index is not unique because Processing can split one dispatch across several
 | `IX_timeline_events_SourceEventId` | `SourceEventId` | Yes | Replaying an event cannot add a second row |
 | `IX_timeline_events_BatchId_OccurredAt` | `BatchId`, `OccurredAt` | | One batch's timeline, in order |
 | `IX_timeline_events_OccurredAt` | `OccurredAt` | | Events across all batches in a time window |
+| `IX_timeline_events_RecordedBy_OccurredAt` | `RecordedBy`, `OccurredAt` | | Everything one user recorded: the audit trail's user filter (SCRUM-138) |
 
 ### `upstream_snapshots`
 
@@ -330,7 +331,7 @@ Upstream relays deliver at least once, so the same event can arrive twice. A con
 | `OccurredAt` | `datetime(6)` | | |
 | `Actor` | `varchar(100)` | | The user ID from the token, or the consumer's name for changes made by event processing |
 | `Action` | `varchar(100)` | | |
-| `EntityType` | `varchar(50)` | | e.g. `BatchRecord` |
+| `EntityType` | `varchar(50)` | | e.g. `Batch` |
 | `EntityId` | `varchar(100)` | | e.g. the `BatchId` |
 | `Details` | `json` | Yes | What changed |
 | `CorrelationId` | `varchar(64)` | Yes | The request's `X-Correlation-ID`, to find the matching log lines |
@@ -339,12 +340,17 @@ Upstream relays deliver at least once, so the same event can arrive twice. A con
 |---|---|---|---|
 | `IX_audit_entries_EntityType_EntityId_OccurredAt` | `EntityType`, `EntityId`, `OccurredAt` | | The history of one record |
 | `IX_audit_entries_OccurredAt` | `OccurredAt` | | Everything in a time window |
+| `IX_audit_entries_Actor_OccurredAt` | `Actor`, `OccurredAt` | | The audit trail's user filter (SCRUM-138) |
+
+Append-only (SCRUM-138): the triggers `audit_entries_no_update` and `audit_entries_no_delete` fail any `UPDATE` or `DELETE` with SQLSTATE `45000`, and the application refuses to save a changed or removed entry. See [audit-trail.md](audit-trail.md).
 
 Written by:
 
 | Action | EntityType | EntityId | Details |
 |---|---|---|---|
 | `BatchSearchExported` | `BatchSearch` | The export's file name | `{ fileName, rowCount, role, filters }`: the filters as applied, null where not given (SCRUM-139) |
+| `BatchRecordOpened` | `Batch` | The `BatchId` | `{ role }` (SCRUM-138) |
+| `BatchTraceOpened` | `Batch` | The `BatchId` | `{ role }` (SCRUM-138) |
 
 ---
 

@@ -71,7 +71,10 @@ namespace TraceabilityService.Api.Infrastructure
                 // No token is still 401; a valid token without one of these roles is 403.
                 .AddPolicy(TraceabilityPolicies.QualityControl, policy => policy
                     .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme)
-                    .RequireRole(WonrichRoles.QualityControlOfficer, WonrichRoles.SystemAdministrator));
+                    .RequireRole(WonrichRoles.QualityControlOfficer, WonrichRoles.SystemAdministrator))
+                .AddPolicy(TraceabilityPolicies.AuditTrail, policy => policy
+                    .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme)
+                    .RequireRole(WonrichRoles.SystemAdministrator, WonrichRoles.QualityControlOfficer));
             return services;
         }
     }

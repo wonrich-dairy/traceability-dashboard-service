@@ -9,17 +9,19 @@ namespace TraceabilityService.Api.Controllers;
 /// <summary>
 /// The unified batch record (SCRUM-133) and its backward trace (SCRUM-134). Quality
 /// Control Officers and System Administrators only: no token is 401, any other role is 403.
+/// Opening either is audited (SCRUM-138); a 404 is not, since nothing was opened.
 /// </summary>
 [ApiController]
 [Route("api/batches")]
 [Authorize(Policy = TraceabilityPolicies.QualityControl)]
 [ProducesResponseType(StatusCodes.Status401Unauthorized)]
 [ProducesResponseType(StatusCodes.Status403Forbidden)]
-public class BatchesController(IBatchRecordService batches, IBatchTraceService traces) : ControllerBase
+public class BatchesController(IBatchRecordService batches, IBatchTraceService traces, IAuditTrailService audit) : ControllerBase
 {
     private const string ProblemJson = "application/problem+json";
     private readonly IBatchRecordService _batches = batches;
     private readonly IBatchTraceService _traces = traces;
+    private readonly IAuditTrailService _audit = audit;
 
     /// <summary>
     /// The full record for one batch: its timeline with each event's deviations, and
@@ -48,6 +50,7 @@ public class BatchesController(IBatchRecordService batches, IBatchTraceService t
                 statusCode: StatusCodes.Status404NotFound);
         }
 
+        await _audit.RecordBatchOpenedAsync(AuditActions.BatchRecordOpened, batch.BatchId, this.AuditRequester(), cancellationToken);
         return Ok(batch);
     }
 
@@ -81,6 +84,7 @@ public class BatchesController(IBatchRecordService batches, IBatchTraceService t
                 statusCode: StatusCodes.Status404NotFound);
         }
 
+        await _audit.RecordBatchOpenedAsync(AuditActions.BatchTraceOpened, trace.BatchId, this.AuditRequester(), cancellationToken);
         return Ok(trace);
     }
 
