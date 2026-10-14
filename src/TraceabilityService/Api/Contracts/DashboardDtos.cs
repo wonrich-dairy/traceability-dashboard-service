@@ -195,3 +195,23 @@ public class DashboardSocietiesDto : DashboardResponse
     /// </summary>
     public List<MarginalSocietyDto> Societies{get; set;} = [];
 }
+
+/// <summary>Gate acceptance performance for all societies with tests in the selected date range.</summary>
+public class DashboardSocietyPerformanceDto : DashboardResponse
+{
+    public List<SocietyPerformanceDto> Societies { get; set; } = [];
+}
+
+public class SocietyPerformanceDto
+{
+    public required string SocietyCode { get; set; }
+    public string? SocietyName { get; set; }
+    public int TotalConsignments { get; set; }
+    public int Accepted { get; set; }
+    public int Rejected { get; set; }
+    /// <summary>Accepted / total, as a fraction from 0 to 1.</summary>
+    public double AcceptanceRate { get; set; }
+    public decimal? AverageFatPercent { get; set; }
+    public decimal? AverageSnf { get; set; }
+    public int MarginalCount { get; set; }
+}

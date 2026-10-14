@@ -19,6 +19,8 @@ public class ConsumerRegistrationTests(TraceabilityApiFactory factory)
         "wonrich.processing.hold-events.v1", "traceability-hold-events", "wonrich.dlq.traceability-hold-events.v1")]
     [InlineData(LabDeterminationConsumer.Name,
         "wonrich.quality-lab.batch-determinations.v1", "traceability-batch-determinations", "wonrich.dlq.traceability-batch-determinations.v1")]
+    [InlineData(ConsignmentTestedConsumer.Name,
+        "wonrich.mcc.consignment-tested.v1", "traceability-consignment-tested", "wonrich.dlq.traceability-consignment-tested.v1")]
     public void Each_consumer_uses_its_registered_topic_group_and_dead_letter_topic(
         string consumer, string topic, string group, string deadLetterTopic)
     {
@@ -32,6 +34,6 @@ public class ConsumerRegistrationTests(TraceabilityApiFactory factory)
     {
         var consumers = factory.Services.GetServices<IHostedService>().OfType<KafkaEventConsumer>();
 
-        Assert.Equal(3, consumers.Count());
+        Assert.Equal(4, consumers.Count());
     }
 }

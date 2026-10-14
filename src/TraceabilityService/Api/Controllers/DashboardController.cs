@@ -110,6 +110,18 @@ public class DashboardController(IDashboardService dashboard, FactoryCalendar ca
             : Ok(await _dashboard.GetSocietiesAsync(filter, limit, cancellationToken));
     }
 
+    /// <summary>Acceptance rate, test averages, and marginal count for every society with a gate test in range.</summary>
+    [HttpGet("society-performance")]
+    [ProducesResponseType(typeof(DashboardSocietyPerformanceDto), StatusCodes.Status200OK, "application/json")]
+    public async Task<ActionResult<DashboardSocietyPerformanceDto>> SocietyPerformance(
+        [FromQuery] DashboardQuery query, CancellationToken cancellationToken)
+    {
+        var filter = Resolve(query);
+        return filter is null
+            ? ValidationProblem(ModelState)
+            : Ok(await _dashboard.GetSocietyPerformanceAsync(filter, cancellationToken));
+    }
+
     private void CheckLimit(int limit)
     {
         if (limit is < 1 or > MaxLimit)

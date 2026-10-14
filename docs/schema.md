@@ -16,6 +16,7 @@ Traceability Service keeps a **read model**: a copy of every batch's history, bu
 | `deviation_records` | Limit broken | What went out of range, by how much, and which event reported it |
 | `lab_determinations` | Quality Lab determination | The lab's Cleared or Failed result, superseded ones included |
 | `daily_quality_aggregates` | Facility, production day and product line | Pre-counted batches by status |
+| `daily_society_aggregates` | Factory day and society | Gate verdict totals, fat/SNF sums and marginal-test count from `ConsignmentTested` |
 | `daily_reason_code_aggregates` | Facility, production day, product line and reason code | Pre-counted deviations by reason |
 | `processed_messages` | Event handled by a consumer group | Stops an event redelivered by Kafka being applied twice |
 | `audit_entries` | Change made by a user or a consumer | Who changed what, and when |
@@ -288,6 +289,24 @@ The dashboard's fail rate is `FailedCount / BatchCount` and is not stored. Pendi
 |---|---|---|---|
 | `IX_daily_quality_aggregates_Facility_Date_ProductLine` | `Facility`, `Date`, `ProductLine` | Yes | One row per facility, day and product line; a facility's date window is a range scan on it |
 
+### `daily_society_aggregates`
+
+One row per society per factory-local day. `ConsignmentTested` is deduplicated and applied in the same transaction as its `processed_messages` record. `FatPercentTotal` and `SnfTotal` are used to calculate unweighted per-consignment averages over a requested range.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `Id` | `int` | | Auto-increment |
+| `Date` | `date` | | Factory-local date of the original test entry |
+| `SocietyCode` | `varchar(50)` | | Society identifier |
+| `SocietyName` | `varchar(200)` | Yes | Latest non-empty name observed |
+| `TotalConsignments` | `int` | | Accepted plus rejected gate tests |
+| `AcceptedCount` / `RejectedCount` | `int` | | Counts by verdict |
+| `FatPercentTotal` / `SnfTotal` | `decimal(12,4)` | | Running sums used to calculate averages |
+| `MarginalCount` | `int` | | Count of events marked marginal by the producer |
+| `UpdatedAt` | `datetime(6)` | | Last event applied to the row |
+
+The unique index on (`Date`, `SocietyCode`) supports the daily upsert. `GET /api/dashboard/society-performance` sums these rows over the requested dates and returns all societies with tests in range.
+
 ### `daily_reason_code_aggregates`
 
 | Column | Type | Null | Notes |
@@ -530,6 +549,7 @@ How the batch record endpoint uses it:
 | Factory Intake section | One record for `intake` (time `screenedAt`, user `screenedBy`) |
 | Links | `dispatch` → `tanks` (code, quantity drawn) → `consignments` → `society` |
 | `GET /api/dashboard/societies` | Every consignment's `society` and `panel.tightestMargin` / `tightestMeasure`, across the resolved snapshots of the batches in range. TR-12 is descoped, so there is no per-society table and this is parsed on each request |
+| `GET /api/dashboard/society-performance` | Every society with a `ConsignmentTested` event in range, with gate acceptance rate, verdict counts, average fat/SNF and marginal count from `daily_society_aggregates` |
 
 ---
 

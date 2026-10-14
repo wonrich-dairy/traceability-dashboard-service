@@ -37,6 +37,7 @@ public class ProjectionRebuildService(
         "pending_dispatch_events",
         "daily_quality_aggregates",
         "daily_reason_code_aggregates",
+        "daily_society_aggregates",
     ];
 
     private sealed record TopicInfo(string Name, string Topic, string ConsumerGroup);
@@ -52,6 +53,9 @@ public class ProjectionRebuildService(
         new("BatchDeterminations",
             configuration["Kafka:Topics:BatchDeterminations"] ?? "wonrich.quality-lab.batch-determinations.v1",
             configuration["Kafka:ConsumerGroups:BatchDeterminations"] ?? "traceability-batch-determinations"),
+        new("ConsignmentTested",
+            configuration["Kafka:Topics:ConsignmentTested"] ?? "wonrich.mcc.consignment-tested.v1",
+            configuration["Kafka:ConsumerGroups:ConsignmentTested"] ?? "traceability-consignment-tested"),
     ];
 
     public async Task<ProjectionRebuildResultDto> RebuildAsync(
@@ -75,7 +79,11 @@ public class ProjectionRebuildService(
         var rebuildGroup = string.IsNullOrWhiteSpace(sanitizedRequestedGroup) ? $"traceability-rebuild-{Guid.NewGuid():N}" : sanitizedRequestedGroup;
         var topics = GetTopics();
 
-        logger.LogInformation("Starting projection rebuild using consumer group {RebuildGroup}", rebuildGroup);
+        var rebuildGroupForLog = rebuildGroup
+            .Replace("\r", string.Empty)
+            .Replace("\n", string.Empty);
+
+        logger.LogInformation("Starting projection rebuild using consumer group {RebuildGroup}", rebuildGroupForLog);
 
         // Capture an end offset for every partition before reading. Events appended
         // after each captured boundary remain for the live groups after restart.
@@ -239,6 +247,7 @@ public class ProjectionRebuildService(
         var stageGroup = topics.Single(t => t.Name == "StageEvents").ConsumerGroup;
         var holdGroup = topics.Single(t => t.Name == "HoldEvents").ConsumerGroup;
         var labGroup = topics.Single(t => t.Name == "BatchDeterminations").ConsumerGroup;
+        var societyGroup = topics.Single(t => t.Name == "ConsignmentTested").ConsumerGroup;
         var shadowPrefix = $"rb{Guid.NewGuid():N}_";
         var shadowSwapped = false;
 
@@ -265,9 +274,13 @@ public class ProjectionRebuildService(
             labHandlers.Add<LabDeterminationHandler<BatchClearedEvent>>("BatchCleared");
             labHandlers.Add<LabDeterminationHandler<BatchFailedEvent>>("BatchFailed");
 
+            var societyHandlers = new EventHandlerMap();
+            societyHandlers.Add<ConsignmentTestedHandler>("ConsignmentTested");
+
             var stageProcessor = CreateProcessor("StageEvents", stageHandlers.Handlers, stageGroup);
             var holdProcessor = CreateProcessor("HoldEvents", holdHandlers.Handlers, holdGroup);
             var labProcessor = CreateProcessor("BatchDeterminations", labHandlers.Handlers, labGroup);
+            var societyProcessor = CreateProcessor("ConsignmentTested", societyHandlers.Handlers, societyGroup);
 
             // Apply events chronologically to respect stage -> hold -> lab ordering.
             var sortedEvents = events.OrderBy(EventTimestamp).ToList();
@@ -277,7 +290,7 @@ public class ProjectionRebuildService(
             foreach (var cr in sortedEvents)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var processor = SelectProcessor(cr.Topic, stageProcessor, holdProcessor, labProcessor);
+                var processor = SelectProcessor(cr.Topic, stageProcessor, holdProcessor, labProcessor, societyProcessor);
 
                 try
                 {
@@ -298,7 +311,7 @@ public class ProjectionRebuildService(
             foreach (var cr in deferred)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var processor = SelectProcessor(cr.Topic, stageProcessor, holdProcessor, labProcessor);
+                var processor = SelectProcessor(cr.Topic, stageProcessor, holdProcessor, labProcessor, societyProcessor);
                 var outcome = await processor.ProcessAsync(cr, cancellationToken);
                 if (outcome == EventOutcome.DeadLettered)
                 {
@@ -637,8 +650,12 @@ public class ProjectionRebuildService(
     }
 
     private EventProcessor SelectProcessor(
-        string topic, EventProcessor stage, EventProcessor hold, EventProcessor lab)
+        string topic, EventProcessor stage, EventProcessor hold, EventProcessor lab, EventProcessor society)
     {
+        if (topic.Contains("consignment", StringComparison.OrdinalIgnoreCase))
+        {
+            return society;
+        }
         if (topic.Contains("hold", StringComparison.OrdinalIgnoreCase))
         {
             return hold;

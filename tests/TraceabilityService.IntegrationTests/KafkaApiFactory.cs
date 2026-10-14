@@ -21,9 +21,11 @@ public class KafkaApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         ("wonrich.processing.stage-events.v1", 3),
         ("wonrich.processing.hold-events.v1", 3),
         ("wonrich.quality-lab.batch-determinations.v1", 3),
+        ("wonrich.mcc.consignment-tested.v1", 3),
         ("wonrich.dlq.traceability-stage-events.v1", 1),
         ("wonrich.dlq.traceability-hold-events.v1", 1),
         ("wonrich.dlq.traceability-batch-determinations.v1", 1),
+        ("wonrich.dlq.traceability-consignment-tested.v1", 1),
     ];
 
     private readonly MySqlContainer _mysql = new MySqlBuilder("mysql:8.0")

@@ -340,7 +340,7 @@ public class AuditTrailEndpointTests(TraceabilityApiFactory factory, ITestOutput
                 triggers.Stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries));
 
             var migrations = await factory.QueryAsync(database, "SELECT MigrationId FROM __EFMigrationsHistory ORDER BY 1 DESC LIMIT 1");
-            Assert.EndsWith("_MakeAuditEntriesAppendOnly", migrations.Stdout.Trim());
+            Assert.EndsWith("_AddDailySocietyAggregates", migrations.Stdout.Trim());
 
             var refused = await factory.QueryAsync(database,
                 "INSERT INTO audit_entries (OccurredAt, Actor, Action, EntityType, EntityId) VALUES (NOW(6), 'u', 'A', 'Batch', 'B'); DELETE FROM audit_entries;");

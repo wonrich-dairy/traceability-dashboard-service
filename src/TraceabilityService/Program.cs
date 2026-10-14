@@ -55,6 +55,7 @@ builder.Services.AddScoped<IProjectionRebuildService, ProjectionRebuildService>(
 // commits after either (EventProcessor). Handlers are per event type.
 builder.Services.AddLabDeterminationConsumer(builder.Configuration);
 builder.Services.AddProcessingConsumers(builder.Configuration);
+builder.Services.AddConsignmentTestedConsumer(builder.Configuration);
 
 // ── Upstream snapshots (MCC and Intake Service) ──────────────────────────────
 // A new batch's snapshot is tried as soon as its event commits, then retried in the background
