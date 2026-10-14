@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using TraceabilityService.Api.Contracts;
 using Wonrich.Auth.Tokens;
 
 namespace TraceabilityService.Api.Controllers;
@@ -13,15 +14,18 @@ namespace TraceabilityService.Api.Controllers;
 [Route("api/[controller]")]
 public sealed class MeController : ControllerBase
 {
+    /// <summary>The caller's identity, as read from their token. Any role.</summary>
+    /// <response code="200">The caller.</response>
     [HttpGet]
-    public IActionResult Get()
+    [ProducesResponseType(typeof(MeDto), StatusCodes.Status200OK, "application/json")]
+    public ActionResult<MeDto> Get()
     {
-        return Ok(new
+        return Ok(new MeDto
         {
-            userId = User.UserId(),
-            userName = User.UserName(),
-            role = User.Role(),
-            facility = User.Facility()
+            UserId = User.UserId(),
+            UserName = User.UserName(),
+            Role = User.Role(),
+            Facility = User.Facility()
         });
     }
 }

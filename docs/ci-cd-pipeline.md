@@ -21,6 +21,7 @@ Traceability Service is built, tested, scanned and deployed by GitHub Actions (S
 | Image tag the app follows | `latest` | `production` |
 | Rollback tag | `previous` | `production-previous` |
 | `ASPNETCORE_ENVIRONMENT` | `Staging` | `Production` |
+| Swagger UI | `/swagger` | Off |
 | Database | `traceability` | `traceability_prod` |
 | Migrations | applied by the app on startup | applied by the pipeline from the migration script, before the deploy |
 

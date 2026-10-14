@@ -26,6 +26,7 @@ public class BatchesController(IBatchRecordService batches, IBatchTraceService t
     /// its upstream snapshot.
     /// </summary>
     /// <param name="batchId">Processing's batch code, e.g. 262-FM-B.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     /// <response code="200">The batch.</response>
     /// <response code="404">No batch carries that ID.</response>
     [HttpGet("{batchId}")]
@@ -60,6 +61,7 @@ public class BatchesController(IBatchRecordService batches, IBatchTraceService t
     /// deviation with the earliest time. The same data always gives the same trace.
     /// </remarks>
     /// <param name="batchId">Processing's batch code, e.g. 262-FM-B.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     /// <response code="200">The trace.</response>
     /// <response code="404">No batch carries that ID.</response>
     [HttpGet("{batchId}/trace")]
@@ -93,6 +95,7 @@ public class BatchesController(IBatchRecordService batches, IBatchTraceService t
     /// </remarks>
     /// <param name="dispatchRef">MCC dispatch number, e.g. DN-20260919-02.</param>
     /// <param name="batchReference">Factory intake batch reference, e.g. WR-20260919-02.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     /// <response code="200">The matching batches, oldest first. Possibly empty.</response>
     /// <response code="400">Neither filter was given.</response>
     [HttpGet]
