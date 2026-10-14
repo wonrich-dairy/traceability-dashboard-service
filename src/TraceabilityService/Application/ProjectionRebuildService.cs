@@ -54,7 +54,7 @@ public class ProjectionRebuildService(
             configuration["Kafka:Topics:BatchDeterminations"] ?? "wonrich.quality-lab.batch-determinations.v1",
             configuration["Kafka:ConsumerGroups:BatchDeterminations"] ?? "traceability-batch-determinations"),
         new("ConsignmentTested",
-            configuration["Kafka:Topics:ConsignmentTested"] ?? "wonrich.mcc.consignment-tested.v1",
+            configuration["Kafka:Topics:ConsignmentTested"] ?? "wonrich.intake.consignment-tested.v1",
             configuration["Kafka:ConsumerGroups:ConsignmentTested"] ?? "traceability-consignment-tested"),
     ];
 

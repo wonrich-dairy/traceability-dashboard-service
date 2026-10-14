@@ -17,7 +17,7 @@ public static class ConsignmentTestedConsumer
         services.TryAddSingleton(TimeProvider.System);
         return services.AddEventConsumer(
             KafkaConsumerOptions.From(configuration, Name,
-                topic: "wonrich.mcc.consignment-tested.v1",
+                topic: "wonrich.intake.consignment-tested.v1",
                 consumerGroup: "traceability-consignment-tested",
                 deadLetterTopic: "wonrich.dlq.traceability-consignment-tested.v1"),
             handlers => handlers.Add<ConsignmentTestedHandler>("ConsignmentTested"));
@@ -66,5 +66,9 @@ public sealed class ConsignmentTestedHandler(
         aggregate.SnfTotal += tested.Panel.Snf;
         if (tested.IsMarginal) aggregate.MarginalCount++;
         aggregate.UpdatedAt = time.GetUtcNow().UtcDateTime;
+
+        // The unit of work only commits the transaction; like every other handler, this one saves
+        // its own changes, or the aggregate is dropped while the message is still marked processed.
+        await db.SaveChangesAsync(cancellationToken);
     }
 }

@@ -16,6 +16,7 @@ public class ConsignmentTestedHandlerTests
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
         await using var db = new TraceabilityDbContext(options);
+        await using var reader = new TraceabilityDbContext(options);
         var handler = new ConsignmentTestedHandler(db, TimeProvider.System);
         var occurredAt = new DateTime(2026, 10, 12, 19, 0, 0, DateTimeKind.Utc);
 
@@ -35,7 +36,8 @@ public class ConsignmentTestedHandlerTests
             Panel = new QualityPanelDetails { FatPercent = 2.9m, Snf = 7.8m },
         }, 2);
 
-        var aggregate = await db.DailySocietyAggregates.SingleAsync();
+        // Read through a second context: what the handler saved, not what it only tracked.
+        var aggregate = await reader.DailySocietyAggregates.SingleAsync();
         Assert.Equal(new DateOnly(2026, 10, 13), aggregate.Date); // Factory-local date is UTC+05:30.
         Assert.Equal("VS014", aggregate.SocietyCode);
         Assert.Equal(2, aggregate.TotalConsignments);
@@ -54,8 +56,7 @@ public class ConsignmentTestedHandlerTests
     {
         var json = JsonSerializer.Serialize(value, new JsonSerializerOptions(JsonSerializerDefaults.Web));
         await handler.HandleAsync(new ConsumedEvent(
-            "wonrich.mcc.consignment-tested.v1", 0, offset, "VS014", "ConsignmentTested",
+            "wonrich.intake.consignment-tested.v1", 0, offset, "VS014", "ConsignmentTested",
             Guid.NewGuid(), "test-correlation", json), CancellationToken.None);
-        await db.SaveChangesAsync();
     }
 }

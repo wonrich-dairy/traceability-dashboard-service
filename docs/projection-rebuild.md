@@ -111,7 +111,7 @@ What the automated rebuild does:
    - `wonrich.processing.stage-events.v1`
    - `wonrich.processing.hold-events.v1`
    - `wonrich.quality-lab.batch-determinations.v1`
-   - `wonrich.mcc.consignment-tested.v1`
+   - `wonrich.intake.consignment-tested.v1`
 4. **Applies events chronologically:** Dispatches each event to its typed handler inside a transaction per event. Processed-message rows are recorded under the live consumer groups so replay deduplication still works after cutover. If an event is dead-lettered, the rebuild aborts and the active tables remain untouched.
 5. **Re-resolves Upstream Snapshots (SCRUM-12):** Calls the MCC and Intake Service for pending snapshots. Successful resolutions are stored; failures remain pending for the normal retry worker.
 6. **Cuts over atomically:** One MySQL multi-table `RENAME TABLE` promotes the complete shadow set and retains the previous set with an `old<guid>_` prefix. `audit_entries` remains untouched.
