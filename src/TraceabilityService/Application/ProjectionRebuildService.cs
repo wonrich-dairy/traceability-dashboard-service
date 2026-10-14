@@ -417,11 +417,11 @@ public class ProjectionRebuildService(
         }
     }
 
-    private static string? SanitizeForLogging(string? value)
+    private static string SanitizeForLogging(string? value)
     {
         if (string.IsNullOrEmpty(value))
         {
-            return value;
+            return string.Empty;
         }
 
         return value.Replace("\r", string.Empty).Replace("\n", string.Empty);
