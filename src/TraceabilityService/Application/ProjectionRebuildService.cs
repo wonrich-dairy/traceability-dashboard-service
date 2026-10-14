@@ -233,6 +233,7 @@ public class ProjectionRebuildService(
 
         var stopwatch = Stopwatch.StartNew();
         var rebuildGroup = request.ConsumerGroup ?? $"traceability-rebuild-{Guid.NewGuid():N}";
+        var safeRebuildGroupForLog = rebuildGroup.Replace("\r", string.Empty).Replace("\n", string.Empty);
         var topics = GetTopics();
         var stageGroup = topics.Single(t => t.Name == "StageEvents").ConsumerGroup;
         var holdGroup = topics.Single(t => t.Name == "HoldEvents").ConsumerGroup;
@@ -241,7 +242,7 @@ public class ProjectionRebuildService(
         var shadowSwapped = false;
 
         logger.LogInformation("Building shadow projection from {EventCount} event(s), reader group {RebuildGroup}, table prefix {Prefix}",
-            events.Count, rebuildGroup, shadowPrefix);
+            events.Count, safeRebuildGroupForLog, shadowPrefix);
 
         using var tableScope = ProjectionTableScope.Enter(shadowPrefix, includeAuditEntries: false);
         await using var shadowScope = scopes.CreateAsyncScope();
