@@ -65,9 +65,17 @@ public sealed class DeadLettersEndpointTests(KafkaApiFactory factory)
         }
         finally
         {
-            await admin.CreateTopicsAsync([
-                new TopicSpecification { Name = MissingTopic, NumPartitions = 3, ReplicationFactor = 1 },
-            ]);
+            try
+            {
+                await admin.CreateTopicsAsync([
+                    new TopicSpecification { Name = MissingTopic, NumPartitions = 3, ReplicationFactor = 1 },
+                ]);
+            }
+            catch (CreateTopicsException ex)
+                when (ex.Results.All(r => r.Error.Code == ErrorCode.TopicAlreadyExists))
+            {
+                // Kafka re-created the topic already (auto-create or a delete still finishing): nothing to do.
+            }
         }
     }
 }
