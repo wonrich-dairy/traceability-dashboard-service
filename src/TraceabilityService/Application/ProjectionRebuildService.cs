@@ -75,7 +75,8 @@ public class ProjectionRebuildService(
 
         await using var rebuildLock = await AcquireRebuildLockAsync(cancellationToken);
 
-        var rebuildGroup = request.ConsumerGroup ?? $"traceability-rebuild-{Guid.NewGuid():N}";
+        var sanitizedRequestedGroup = SanitizeForLogging(request.ConsumerGroup);
+        var rebuildGroup = string.IsNullOrWhiteSpace(sanitizedRequestedGroup) ? $"traceability-rebuild-{Guid.NewGuid():N}" : sanitizedRequestedGroup;
         var topics = GetTopics();
 
         logger.LogInformation("Starting projection rebuild using consumer group {RebuildGroup}", rebuildGroup);
@@ -237,6 +238,7 @@ public class ProjectionRebuildService(
 
         var stopwatch = Stopwatch.StartNew();
         var rebuildGroup = request.ConsumerGroup ?? $"traceability-rebuild-{Guid.NewGuid():N}";
+        var safeRebuildGroupForLog = rebuildGroup.Replace("\r", string.Empty).Replace("\n", string.Empty);
         var topics = GetTopics();
         var stageGroup = topics.Single(t => t.Name == "StageEvents").ConsumerGroup;
         var holdGroup = topics.Single(t => t.Name == "HoldEvents").ConsumerGroup;
@@ -246,7 +248,7 @@ public class ProjectionRebuildService(
         var shadowSwapped = false;
 
         logger.LogInformation("Building shadow projection from {EventCount} event(s), reader group {RebuildGroup}, table prefix {Prefix}",
-            events.Count, rebuildGroup, shadowPrefix);
+            events.Count, safeRebuildGroupForLog, shadowPrefix);
 
         using var tableScope = ProjectionTableScope.Enter(shadowPrefix, includeAuditEntries: false);
         await using var shadowScope = scopes.CreateAsyncScope();
@@ -397,15 +399,16 @@ public class ProjectionRebuildService(
         Exception failure,
         CancellationToken cancellationToken)
     {
+        var safeRebuildGroup = SanitizeForLogging(rebuildGroup);
         try
         {
             await audit.RecordAdminActionAsync(
                 AuditActions.ProjectionRebuilt,
                 "Projection",
-                rebuildGroup,
+                safeRebuildGroup,
                 new
                 {
-                    consumerGroup = rebuildGroup,
+                    consumerGroup = safeRebuildGroup,
                     eventsRead,
                     clearStore = request.ClearStore,
                     failed = true,
@@ -419,8 +422,18 @@ public class ProjectionRebuildService(
         }
         catch (Exception auditException)
         {
-            logger.LogError(auditException, "Could not write the failure audit for projection rebuild {RebuildGroup}", rebuildGroup);
+            logger.LogError(auditException, "Could not write the failure audit for projection rebuild {RebuildGroup}", safeRebuildGroup);
         }
+    }
+
+    private static string SanitizeForLogging(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return string.Empty;
+        }
+
+        return value.Replace("\r", string.Empty).Replace("\n", string.Empty);
     }
 
     private async Task<RebuildLockLease> AcquireRebuildLockAsync(CancellationToken cancellationToken)

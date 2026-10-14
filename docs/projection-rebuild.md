@@ -33,6 +33,10 @@ GET /api/admin/dead-letters
 GET /api/admin/dead-letters/{consumerGroup}
 ```
 
+When listing all groups, a group whose dead-letter topic is missing from Kafka is skipped and
+logged; messages from the other available topics are still returned. Requesting that group
+directly returns `404` with the missing topic name in the problem detail.
+
 Response payload includes for each message:
 - `consumerGroup`: which consumer group failed
 - `topic`: dead-letter topic name
@@ -205,4 +209,3 @@ Replaying the 24 sample batches defined in `docs/sample-data.sql` should reprodu
 - Exact matching status distribution (`Processing`, `AwaitingLab`, `OnHold`, `Cleared`, `Failed`).
 - Accurate daily quality aggregate counts for the 5 production days.
 - Resolved upstream snapshots matching dispatch notes from the MCC and Intake Service.
-

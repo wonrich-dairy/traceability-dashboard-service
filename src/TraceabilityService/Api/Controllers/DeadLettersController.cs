@@ -28,9 +28,11 @@ public class DeadLettersController(IDeadLetterService deadLetters) : ControllerB
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <response code="200">The dead-letter messages.</response>
     /// <response code="400">Unknown consumer group specified.</response>
+    /// <response code="404">The consumer group's dead-letter topic does not exist.</response>
     [HttpGet]
     [ProducesResponseType(typeof(List<DeadLetterMessageDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest, ProblemJson)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound, ProblemJson)]
     public async Task<ActionResult<List<DeadLetterMessageDto>>> List(
         [FromQuery] string? consumerGroup, CancellationToken cancellationToken)
     {
@@ -43,6 +45,10 @@ public class DeadLettersController(IDeadLetterService deadLetters) : ControllerB
         {
             return BadRequest(new ProblemDetails { Title = "Invalid consumer group", Detail = ex.Message });
         }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new ProblemDetails { Title = "Dead-letter topic not found", Detail = ex.Message });
+        }
     }
 
     /// <summary>
@@ -52,9 +58,11 @@ public class DeadLettersController(IDeadLetterService deadLetters) : ControllerB
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <response code="200">The dead-letter messages for the group.</response>
     /// <response code="400">Unknown consumer group.</response>
+    /// <response code="404">The dead-letter topic for this group does not exist.</response>
     [HttpGet("{consumerGroup}")]
     [ProducesResponseType(typeof(List<DeadLetterMessageDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest, ProblemJson)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound, ProblemJson)]
     public async Task<ActionResult<List<DeadLetterMessageDto>>> ListByGroup(
         string consumerGroup, CancellationToken cancellationToken)
     {
@@ -66,6 +74,10 @@ public class DeadLettersController(IDeadLetterService deadLetters) : ControllerB
         catch (ArgumentException ex)
         {
             return BadRequest(new ProblemDetails { Title = "Invalid consumer group", Detail = ex.Message });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new ProblemDetails { Title = "Dead-letter topic not found", Detail = ex.Message });
         }
     }
 
@@ -115,4 +127,3 @@ public class DeadLettersController(IDeadLetterService deadLetters) : ControllerB
         return await Replay(request, cancellationToken);
     }
 }
-
